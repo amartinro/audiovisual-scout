@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, Loader2, Send, FileText, Sparkles } from 'lucide-react';
+import { Mail, Loader2, FileText, Sparkles, AlertTriangle, Globe, Phone, Instagram } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import type { Lead, Business } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ProgressDialog, ProgressStep } from '@/components/ui/progress-dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface LeadWithBusiness extends Lead {
   business: Business;
@@ -33,6 +35,8 @@ export default function Emails() {
   const [asunto, setAsunto] = useState('');
   const [cuerpo, setCuerpo] = useState('');
   const [generating, setGenerating] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -73,65 +77,143 @@ export default function Emails() {
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
-  const generarEmail = () => {
+  const updateStep = (stepId: string, updates: Partial<ProgressStep>) => {
+    setProgressSteps(prev => prev.map(s => 
+      s.id === stepId ? { ...s, ...updates } : s
+    ));
+  };
+
+  const analizarNegocio = async (business: Business): Promise<string | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('analyze-business', {
+        body: { business }
+      });
+
+      if (error) throw error;
+      return data.analysis;
+    } catch (error) {
+      console.error('Error analyzing business:', error);
+      return null;
+    }
+  };
+
+  const generarEmailConIA = async (business: Business, notas: string | null): Promise<{ asunto: string; cuerpo: string } | null> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-email', {
+        body: { business, notas }
+      });
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Error generating email:', error);
+      return null;
+    }
+  };
+
+  const generarEmail = async () => {
     if (!selectedLead) return;
 
+    const business = selectedLead.business;
+
+    // Check if business has email
+    if (!business.email) {
+      toast({
+        variant: 'destructive',
+        title: 'Email requerido',
+        description: 'Este negocio no tiene email asociado. No se puede generar ni enviar un email.',
+      });
+      return;
+    }
+
     setGenerating(true);
+    setProgressOpen(true);
 
-    // Generate email based on business data
-    setTimeout(() => {
-      const business = selectedLead.business;
-      const tono = business.tamano_estimado === 'grande' ? 'formal' : 
-                   business.tamano_estimado === 'pequeno' ? 'cercano' : 'profesional';
+    // Check if we need to analyze first
+    const needsAnalysis = !selectedLead.notas;
 
-      const saludo = tono === 'formal' ? 'Estimados señores' : 
-                     tono === 'cercano' ? 'Hola' : 'Buenos días';
+    const initialSteps: ProgressStep[] = needsAnalysis
+      ? [
+          { id: 'analyze', label: 'Analizando negocio...', status: 'pending', detail: 'Recopilando información del negocio' },
+          { id: 'save-notes', label: 'Guardando análisis', status: 'pending', detail: 'Almacenando notas en la base de datos' },
+          { id: 'generate', label: 'Generando email personalizado', status: 'pending', detail: 'Redactando email con IA' },
+        ]
+      : [
+          { id: 'generate', label: 'Generando email personalizado', status: 'pending', detail: 'Redactando email con IA' },
+        ];
 
-      // Detectar carencias digitales
-      const carencias: string[] = [];
-      if (!business.web) carencias.push('presencia web');
-      if (!business.redes_sociales || (!business.redes_sociales.instagram && !business.redes_sociales.facebook)) {
-        carencias.push('redes sociales activas');
+    setProgressSteps(initialSteps);
+
+    try {
+      let notas = selectedLead.notas;
+
+      // Step 1: Analyze if needed
+      if (needsAnalysis) {
+        updateStep('analyze', { status: 'loading', detail: `Analizando ${business.nombre}...` });
+        
+        const analysis = await analizarNegocio(business);
+        
+        if (analysis) {
+          updateStep('analyze', { status: 'complete', detail: 'Análisis completado' });
+          notas = analysis;
+
+          // Step 2: Save notes
+          updateStep('save-notes', { status: 'loading', detail: 'Guardando en base de datos...' });
+          
+          const { error: updateError } = await supabase
+            .from('leads')
+            .update({ notas })
+            .eq('id', selectedLead.id);
+
+          if (updateError) {
+            updateStep('save-notes', { status: 'error', detail: 'Error al guardar' });
+            throw updateError;
+          }
+
+          updateStep('save-notes', { status: 'complete', detail: 'Notas guardadas' });
+
+          // Update local state
+          setLeads(prev => prev.map(l => 
+            l.id === selectedLead.id ? { ...l, notas } : l
+          ));
+        } else {
+          updateStep('analyze', { status: 'error', detail: 'No se pudo analizar' });
+        }
       }
+
+      // Step 3: Generate email
+      updateStep('generate', { status: 'loading', detail: 'Redactando email personalizado...' });
       
-      let carenciasTexto = '';
-      if (carencias.length > 0) {
-        carenciasTexto = `He notado que actualmente no cuentan con ${carencias.join(' ni ')}, lo cual representa una gran oportunidad de mejora.`;
+      const emailData = await generarEmailConIA(business, notas);
+
+      if (emailData) {
+        updateStep('generate', { status: 'complete', detail: 'Email generado' });
+        setAsunto(emailData.asunto);
+        setCuerpo(emailData.cuerpo);
+        
+        toast({ title: '¡Email generado con éxito!' });
       } else {
-        carenciasTexto = 'Tras revisar su presencia digital, creo que podríamos potenciar aún más su imagen de marca.';
+        updateStep('generate', { status: 'error', detail: 'Error al generar email' });
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'No se pudo generar el email. Inténtalo de nuevo.',
+        });
       }
-
-      const asuntoGenerado = `Propuesta de servicios audiovisuales para ${business.nombre}`;
-      const cuerpoGenerado = `${saludo},
-
-Me dirijo a ustedes como ${business.categoria.toLowerCase()} ubicado en ${business.ciudad}, ya que creo que mis servicios pueden ser de gran valor para su negocio.
-
-${carenciasTexto}
-
-Me gustaría ofrecerles mis servicios de fotografía y vídeo profesional para potenciar su imagen y presencia en redes sociales.
-
-Ofrezco:
-- Fotografía profesional de productos, instalaciones y equipo
-- Vídeo promocional y contenido para redes sociales
-- Grabación y emisión de eventos
-- Gestión de contenido visual para Instagram y otras plataformas
-
-Estaré encantado de concertar una reunión sin compromiso para conocer sus necesidades específicas.
-
-Un cordial saludo,
-
-Alberto Martín
-Fotografía y vídeo profesional
-Web: https://tufotoyvideopromocional.es/
-Instagram: https://www.instagram.com/amartinro/
-Email: a.martinro@gmail.com
-WhatsApp: +34 665 651 344`;
-
-      setAsunto(asuntoGenerado);
-      setCuerpo(cuerpoGenerado);
-      setGenerating(false);
-      toast({ title: 'Email generado' });
-    }, 500);
+    } catch (error) {
+      console.error('Error in email generation:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error durante el proceso.',
+      });
+    } finally {
+      // Keep dialog open briefly to show completion
+      setTimeout(() => {
+        setProgressOpen(false);
+        setGenerating(false);
+      }, 1000);
+    }
   };
 
   const guardarBorrador = async () => {
@@ -182,10 +264,16 @@ WhatsApp: +34 665 651 344`;
 
   return (
     <div className="space-y-6">
+      <ProgressDialog 
+        open={progressOpen} 
+        title="Generando Email" 
+        steps={progressSteps} 
+      />
+
       <Alert>
         <Mail className="h-4 w-4" />
         <AlertDescription>
-          Genera emails personalizados para tus leads. El envío se realiza manualmente desde Gmail.
+          Genera emails personalizados para tus leads. El primer email analiza el negocio automáticamente.
         </AlertDescription>
       </Alert>
 
@@ -204,7 +292,12 @@ WhatsApp: +34 665 651 344`;
               <SelectContent>
                 {leads.map((lead) => (
                   <SelectItem key={lead.id} value={lead.id}>
-                    {lead.business?.nombre} - {lead.business?.ciudad}
+                    <span className="flex items-center gap-2">
+                      {lead.business?.nombre} - {lead.business?.ciudad}
+                      {!lead.business?.email && (
+                        <AlertTriangle className="h-3 w-3 text-warning" />
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -223,34 +316,54 @@ WhatsApp: +34 665 651 344`;
                 {/* Contact Info */}
                 <div className="flex flex-wrap gap-2 pt-2 border-t">
                   {selectedLead.business?.web && (
-                    <a href={selectedLead.business.web} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-success/10 text-success px-2 py-1 rounded hover:bg-success/20">
-                      🌐 Web
+                    <a href={selectedLead.business.web.startsWith('http') ? selectedLead.business.web : `https://${selectedLead.business.web}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-success/10 text-success px-2 py-1 rounded hover:bg-success/20">
+                      <Globe className="h-3 w-3 mr-1" /> Web
                     </a>
                   )}
                   {selectedLead.business?.telefono && (
                     <a href={`tel:${selectedLead.business.telefono}`} className="inline-flex items-center text-xs bg-info/10 text-info px-2 py-1 rounded hover:bg-info/20">
-                      📞 {selectedLead.business.telefono}
+                      <Phone className="h-3 w-3 mr-1" /> {selectedLead.business.telefono}
                     </a>
                   )}
                   {selectedLead.business?.email && (
-                    <a href={`mailto:${selectedLead.business.email}`} className="inline-flex items-center text-xs bg-info/10 text-info px-2 py-1 rounded hover:bg-info/20">
-                      ✉️ {selectedLead.business.email}
+                    <a href={`mailto:${selectedLead.business.email}`} className="inline-flex items-center text-xs bg-primary/10 text-primary px-2 py-1 rounded hover:bg-primary/20">
+                      <Mail className="h-3 w-3 mr-1" /> {selectedLead.business.email}
                     </a>
                   )}
                   {selectedLead.business?.redes_sociales?.instagram && (
-                    <a href={selectedLead.business.redes_sociales.instagram} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded hover:bg-pink-200">
-                      📸 Instagram
+                    <a href={selectedLead.business.redes_sociales.instagram.startsWith('http') ? selectedLead.business.redes_sociales.instagram : `https://instagram.com/${selectedLead.business.redes_sociales.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded hover:bg-pink-200 dark:bg-pink-900/30 dark:text-pink-300">
+                      <Instagram className="h-3 w-3 mr-1" /> Instagram
                     </a>
                   )}
                   {selectedLead.business?.redes_sociales?.facebook && (
-                    <a href={selectedLead.business.redes_sociales.facebook} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">
+                    <a href={selectedLead.business.redes_sociales.facebook.startsWith('http') ? selectedLead.business.redes_sociales.facebook : `https://facebook.com/${selectedLead.business.redes_sociales.facebook}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-300">
                       👍 Facebook
                     </a>
                   )}
                 </div>
+
+                {/* Email required warning */}
+                {!selectedLead.business?.email && (
+                  <Alert variant="destructive" className="mt-2">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Este negocio no tiene email. No se puede generar ni enviar emails.
+                    </AlertDescription>
+                  </Alert>
+                )}
                 
                 {!selectedLead.business?.web && !selectedLead.business?.telefono && !selectedLead.business?.email && (
                   <p className="text-xs text-muted-foreground italic">Sin datos de contacto disponibles</p>
+                )}
+
+                {/* Notes section */}
+                {selectedLead.notas && (
+                  <div className="pt-2 border-t">
+                    <Label className="text-xs font-medium text-muted-foreground">Análisis del negocio:</Label>
+                    <ScrollArea className="h-32 mt-1 rounded border p-2 bg-muted/30">
+                      <p className="text-xs whitespace-pre-wrap">{selectedLead.notas}</p>
+                    </ScrollArea>
+                  </div>
                 )}
               </div>
             )}
@@ -258,14 +371,14 @@ WhatsApp: +34 665 651 344`;
             <Button
               className="w-full"
               onClick={generarEmail}
-              disabled={!selectedLead || generating}
+              disabled={!selectedLead || generating || !selectedLead?.business?.email}
             >
               {generating ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              Generar Email
+              {selectedLead?.notas ? 'Generar Nuevo Email' : 'Analizar y Generar Email'}
             </Button>
           </CardContent>
         </Card>
@@ -291,7 +404,7 @@ WhatsApp: +34 665 651 344`;
                 placeholder="Contenido del email..."
                 value={cuerpo}
                 onChange={(e) => setCuerpo(e.target.value)}
-                rows={12}
+                rows={14}
                 className="font-mono text-sm"
               />
             </div>

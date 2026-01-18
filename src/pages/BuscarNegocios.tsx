@@ -37,18 +37,32 @@ interface OverpassElement {
     'addr:housenumber'?: string;
     'addr:city'?: string;
     website?: string;
+    url?: string;
     phone?: string;
+    'phone:mobile'?: string;
+    mobile?: string;
     email?: string;
     'contact:phone'?: string;
+    'contact:mobile'?: string;
     'contact:email'?: string;
     'contact:website'?: string;
     'contact:instagram'?: string;
     'contact:facebook'?: string;
     'contact:twitter'?: string;
     'contact:linkedin'?: string;
+    'contact:youtube'?: string;
+    'contact:tiktok'?: string;
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    linkedin?: string;
+    youtube?: string;
+    tiktok?: string;
     opening_hours?: string;
     cuisine?: string;
     brand?: string;
+    description?: string;
+    operator?: string;
   };
 }
 
@@ -69,6 +83,8 @@ interface BusinessResult {
     facebook?: string | null;
     twitter?: string | null;
     linkedin?: string | null;
+    youtube?: string | null;
+    tiktok?: string | null;
   } | null;
 }
 
@@ -245,17 +261,19 @@ export default function BuscarNegocios() {
             .filter(Boolean)
             .join(' ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
 
-          // Contact info
-          const web = tags.website || tags['contact:website'] || null;
-          const telefono = tags.phone || tags['contact:phone'] || null;
+          // Contact info - check multiple possible fields
+          const web = tags.website || tags['contact:website'] || tags.url || null;
+          const telefono = tags.phone || tags['contact:phone'] || tags['phone:mobile'] || tags.mobile || tags['contact:mobile'] || null;
           const email = tags.email || tags['contact:email'] || null;
 
-          // Social media
+          // Social media - check both contact: prefix and direct tags
           const redesSociales = {
-            instagram: tags['contact:instagram'] || null,
-            facebook: tags['contact:facebook'] || null,
-            twitter: tags['contact:twitter'] || null,
-            linkedin: tags['contact:linkedin'] || null,
+            instagram: tags['contact:instagram'] || tags.instagram || null,
+            facebook: tags['contact:facebook'] || tags.facebook || null,
+            twitter: tags['contact:twitter'] || tags.twitter || null,
+            linkedin: tags['contact:linkedin'] || tags.linkedin || null,
+            youtube: tags['contact:youtube'] || tags.youtube || null,
+            tiktok: tags['contact:tiktok'] || tags.tiktok || null,
           };
           const tieneRedes = Object.values(redesSociales).some(Boolean);
 
