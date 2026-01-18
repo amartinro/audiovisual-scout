@@ -1,12 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   Users,
-  MapPin,
   Loader2,
   Mail,
   Trash2,
   Tag,
-  FileText,
   Download,
   Edit,
   X,
@@ -15,11 +13,12 @@ import {
   Phone,
   Instagram,
   Facebook,
+  Info,
+  StopCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
@@ -33,7 +32,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScoreBadge } from '@/components/ui/score-badge';
-import { EstadoBadge } from '@/components/ui/estado-badge';
 import { useToast } from '@/hooks/use-toast';
 import type { Business, Lead, EstadoLead, RedesSociales } from '@/lib/types';
 import {
@@ -55,7 +53,17 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { Link } from 'react-router-dom';
+import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
+import { LeadCard } from '@/components/leads/LeadCard';
+import { LeadListItem } from '@/components/leads/LeadListItem';
+import { GoogleMapsPopup } from '@/components/ui/google-maps-popup';
 
 interface LeadWithBusiness extends Lead {
   business: Business;
@@ -78,6 +86,7 @@ export default function Leads() {
   const [editingNotas, setEditingNotas] = useState(false);
   const [notasTemp, setNotasTemp] = useState('');
   const [newTag, setNewTag] = useState('');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
 
   // Get unique categories from leads
   const categorias = [...new Set(leads.map(l => l.business?.categoria).filter(Boolean))];
@@ -342,13 +351,17 @@ export default function Leads() {
   };
 
   const exportarCSV = () => {
-    const headers = ['nombre', 'categoria', 'ciudad', 'web', 'potencial_score', 'estado', 'etiquetas', 'notas'];
+    const headers = ['nombre', 'categoria', 'ciudad', 'direccion', 'web', 'telefono', 'email', 'potencial_score', 'motivo_scoring', 'estado', 'etiquetas', 'notas'];
     const rows = filteredLeads.map((l) => [
       l.business.nombre,
       l.business.categoria,
       l.business.ciudad,
+      l.business.direccion,
       l.business.web || '',
+      l.business.telefono || '',
+      l.business.email || '',
       l.business.potencial_score,
+      l.business.motivo_scoring || '',
       l.estado,
       l.etiquetas.join(';'),
       l.notas || '',
@@ -368,6 +381,12 @@ export default function Leads() {
     URL.revokeObjectURL(url);
 
     toast({ title: 'CSV exportado' });
+  };
+
+  const handleLeadClick = (lead: LeadWithBusiness) => {
+    setSelectedLead(lead);
+    setNotasTemp(lead.notas || '');
+    setEditingNotas(false);
   };
 
   if (loading) {
@@ -428,10 +447,13 @@ export default function Leads() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" onClick={exportarCSV} disabled={filteredLeads.length === 0}>
-            <Download className="mr-2 h-4 w-4" />
-            Exportar CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            <ViewToggle viewMode={viewMode} onViewModeChange={setViewMode} />
+            <Button variant="outline" onClick={exportarCSV} disabled={filteredLeads.length === 0}>
+              <Download className="mr-2 h-4 w-4" />
+              Exportar CSV
+            </Button>
+          </div>
         </div>
 
         {/* Contact Filters */}
@@ -503,92 +525,19 @@ export default function Leads() {
           <Users className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium">No hay leads</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Guarda negocios como leads desde la sección de Negocios
+            Busca y guarda leads desde la sección de Buscar
           </p>
         </div>
-      ) : (
+      ) : viewMode === 'grid' ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredLeads.map((lead) => (
-            <Card
-              key={lead.id}
-              className="cursor-pointer shadow-card hover:shadow-card-hover transition-shadow"
-              onClick={() => {
-                setSelectedLead(lead);
-                setNotasTemp(lead.notas || '');
-                setEditingNotas(false);
-              }}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate font-semibold">{lead.business?.nombre}</h3>
-                    <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
-                      <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-                      <span className="truncate">{lead.business?.ciudad}</span>
-                    </p>
-                  </div>
-                  <ScoreBadge score={lead.business?.potencial_score || 0} />
-                </div>
-
-                <div className="mt-3 flex items-center gap-2">
-                  <EstadoBadge estado={lead.estado} />
-                  <span className="text-xs text-muted-foreground">
-                    {lead.business?.categoria}
-                  </span>
-                </div>
-
-                {/* Contact Info Compact */}
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {lead.business?.web && (
-                    <span className="inline-flex items-center rounded bg-success/10 text-success px-1.5 py-0.5 text-xs">
-                      <Globe className="h-3 w-3" />
-                    </span>
-                  )}
-                  {lead.business?.telefono && (
-                    <span className="inline-flex items-center rounded bg-info/10 text-info px-1.5 py-0.5 text-xs">
-                      <Phone className="h-3 w-3" />
-                    </span>
-                  )}
-                  {lead.business?.email && (
-                    <span className="inline-flex items-center rounded bg-info/10 text-info px-1.5 py-0.5 text-xs">
-                      <Mail className="h-3 w-3" />
-                    </span>
-                  )}
-                  {(() => {
-                    const redes = parseRedesSociales(lead.business?.redes_sociales);
-                    return (
-                      <>
-                        {redes.instagram && (
-                          <span className="inline-flex items-center rounded bg-pink-100 text-pink-700 px-1.5 py-0.5 text-xs">
-                            <Instagram className="h-3 w-3" />
-                          </span>
-                        )}
-                        {redes.facebook && (
-                          <span className="inline-flex items-center rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs">
-                            <Facebook className="h-3 w-3" />
-                          </span>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {lead.etiquetas.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {lead.etiquetas.slice(0, 3).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                    {lead.etiquetas.length > 3 && (
-                      <Badge variant="secondary" className="text-xs">
-                        +{lead.etiquetas.length - 3}
-                      </Badge>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filteredLeads.map((lead) => (
+            <LeadListItem key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} />
           ))}
         </div>
       )}
@@ -601,7 +550,23 @@ export default function Leads() {
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-3">
                   {selectedLead.business?.nombre}
-                  <ScoreBadge score={selectedLead.business?.potencial_score || 0} />
+                  <div className="flex items-center gap-1">
+                    <ScoreBadge score={selectedLead.business?.potencial_score || 0} />
+                    {selectedLead.business?.motivo_scoring && (
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button className="text-muted-foreground hover:text-foreground">
+                              <Info className="h-4 w-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-xs">
+                            <p className="text-xs">{selectedLead.business.motivo_scoring}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
+                  </div>
                 </DialogTitle>
                 <DialogDescription>
                   {selectedLead.business?.categoria} • {selectedLead.business?.ciudad}
@@ -609,6 +574,15 @@ export default function Leads() {
               </DialogHeader>
 
               <div className="space-y-4">
+                {/* Dirección con mapa */}
+                <div className="space-y-2">
+                  <Label>Ubicación</Label>
+                  <GoogleMapsPopup 
+                    direccion={selectedLead.business?.direccion || ''} 
+                    ciudad={selectedLead.business?.ciudad}
+                  />
+                </div>
+
                 {/* Estado */}
                 <div className="space-y-2">
                   <Label>Estado</Label>

@@ -23,8 +23,7 @@ interface AppLayoutProps {
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/buscar', label: 'Buscar Negocios', icon: Search },
-  { href: '/negocios', label: 'Negocios', icon: Building2 },
+  { href: '/buscar', label: 'Buscar Leads', icon: Search },
   { href: '/leads', label: 'Leads', icon: Users },
   { href: '/emails', label: 'Emails', icon: Mail },
   { href: '/configuracion', label: 'Configuración', icon: Settings },

@@ -25,6 +25,7 @@ export interface Business {
   tamano_estimado: TamanoNegocio;
   presencia_digital_score: number;
   potencial_score: number;
+  motivo_scoring: string | null;
   created_at: string;
 }
 
