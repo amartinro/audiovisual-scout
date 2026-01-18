@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    const { business, notas } = await req.json();
+    const { business, notas, customPrompt, contactMethod } = await req.json();
     
     if (!business) {
       throw new Error("Business data is required");
@@ -25,6 +25,7 @@ serve(async (req) => {
 
     // Tono siempre cercano y natural por defecto
     const tono = 'cercano, natural y amigable';
+    const isWhatsApp = contactMethod === 'whatsapp';
 
     // Detectar carencias digitales
     const carencias: string[] = [];
@@ -38,7 +39,36 @@ serve(async (req) => {
       ? `Carencias detectadas: ${carencias.join(", ")}.`
       : "El negocio tiene presencia digital básica que podría potenciarse.";
 
-    const prompt = `Genera un email comercial personalizado para el siguiente negocio.
+    // Si hay un prompt personalizado del usuario, usarlo como base
+    let prompt: string;
+    
+    if (customPrompt) {
+      // Reemplazar variables en el prompt personalizado
+      prompt = customPrompt
+        .replace(/\{nombre\}/g, business.nombre)
+        .replace(/\{categoria\}/g, business.categoria)
+        .replace(/\{ciudad\}/g, business.ciudad)
+        .replace(/\{carencias_digitales\}/g, carenciasTexto);
+      
+      prompt += `\n\n${notas ? `NOTAS DEL ANÁLISIS PREVIO:\n${notas}` : ""}`;
+      
+      if (isWhatsApp) {
+        prompt += `\n\nIMPORTANTE: Este mensaje es para WhatsApp, debe ser más corto y directo. No incluir asunto.`;
+      }
+      
+      prompt += `\n\nFORMATO DE RESPUESTA (JSON):
+{
+  "asunto": "${isWhatsApp ? 'Mensaje WhatsApp' : 'Asunto del email'}",
+  "cuerpo": "Cuerpo completo del mensaje con la firma incluida"
+}`;
+    } else {
+      // Prompt por defecto
+      const tipoMensaje = isWhatsApp ? 'mensaje de WhatsApp' : 'email comercial';
+      const instruccionesFormato = isWhatsApp 
+        ? '- Ser breve y directo (máximo 300 palabras)\n   - Usar un tono conversacional apropiado para WhatsApp\n   - NO incluir enlaces largos, solo mencionar que tiene web e Instagram'
+        : '- Tener un asunto atractivo pero profesional\n   - Poder ser un poco más extenso y formal';
+      
+      prompt = `Genera un ${tipoMensaje} personalizado para el siguiente negocio.
 
 DATOS DEL NEGOCIO:
 - Nombre: ${business.nombre}
@@ -52,13 +82,13 @@ ${notas}` : ""}
 
 INSTRUCCIONES:
 1. Tono: ${tono}
-2. El email debe:
+2. El ${isWhatsApp ? 'mensaje' : 'email'} debe:
    - Hacer referencia explícita al tipo de negocio (${business.categoria})
    - Mencionar carencias digitales detectadas de forma positiva (como oportunidades)
    - Proponer servicios audiovisuales específicos y relevantes para su sector
    - NO ser agresivo ni comercialmente invasivo
    - Ser único y personalizado
-   - Tener un asunto atractivo pero profesional
+   ${instruccionesFormato}
 
 3. Servicios que ofrece Alberto:
    - Fotografía profesional (productos, instalaciones, equipo)
@@ -69,16 +99,15 @@ INSTRUCCIONES:
 4. FIRMA OBLIGATORIA (incluir exactamente así):
 Alberto Martín
 Fotografía y vídeo profesional
-Web: https://tufotoyvideopromocional.es/
-Instagram: https://www.instagram.com/amartinro/
-Email: a.martinro@gmail.com
+${isWhatsApp ? '' : 'Web: https://tufotoyvideopromocional.es/\nInstagram: @amartinro\n'}Email: a.martinro@gmail.com
 WhatsApp: +34 665 651 344
 
 FORMATO DE RESPUESTA (JSON):
 {
-  "asunto": "Asunto del email",
-  "cuerpo": "Cuerpo completo del email con la firma incluida"
+  "asunto": "${isWhatsApp ? 'Mensaje WhatsApp' : 'Asunto del email'}",
+  "cuerpo": "Cuerpo completo del mensaje con la firma incluida"
 }`;
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
