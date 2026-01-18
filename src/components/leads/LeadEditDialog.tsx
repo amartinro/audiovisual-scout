@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -43,9 +43,9 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSave }: LeadEditDia
   const [twitter, setTwitter] = useState('');
   const [linkedin, setLinkedin] = useState('');
 
-  // Initialize fields when dialog opens
-  const initializeFields = () => {
-    if (lead) {
+  // Initialize fields when lead changes or dialog opens
+  useEffect(() => {
+    if (open && lead) {
       setNombre(lead.business?.nombre || '');
       setCategoria(lead.business?.categoria || '');
       setCiudad(lead.business?.ciudad || '');
@@ -60,7 +60,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSave }: LeadEditDia
       setTwitter(redes.twitter || '');
       setLinkedin(redes.linkedin || '');
     }
-  };
+  }, [open, lead]);
 
   const handleSave = async () => {
     if (!lead) return;
@@ -121,13 +121,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSave }: LeadEditDia
   };
 
   return (
-    <Dialog 
-      open={open} 
-      onOpenChange={(isOpen) => {
-        if (isOpen) initializeFields();
-        onOpenChange(isOpen);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Editar Lead</DialogTitle>
@@ -242,7 +236,7 @@ export function LeadEditDialog({ lead, open, onOpenChange, onSave }: LeadEditDia
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleSave} disabled={saving || !nombre}>
+          <Button onClick={handleSave} disabled={saving || !nombre.trim()}>
             {saving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
