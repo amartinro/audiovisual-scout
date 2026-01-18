@@ -530,13 +530,39 @@ export default function Emails() {
               <Button
                 className="w-full"
                 onClick={selectedLead?.notas ? 
-                  () => generarEmailConIA(selectedLead.business, selectedLead.notas).then(data => {
-                    if (data) {
-                      setAsunto(data.asunto);
-                      setCuerpo(data.cuerpo);
-                      toast({ title: '¡Mensaje generado!' });
+                  async () => {
+                    setGenerating(true);
+                    setProgressOpen(true);
+                    setProgressSteps([
+                      { id: 'generate', label: 'Generando mensaje personalizado', status: 'loading', detail: 'Redactando mensaje con IA...' },
+                    ]);
+                    try {
+                      const data = await generarEmailConIA(selectedLead.business, selectedLead.notas);
+                      if (data) {
+                        setProgressSteps([
+                          { id: 'generate', label: 'Generando mensaje personalizado', status: 'complete', detail: 'Mensaje generado' },
+                        ]);
+                        setAsunto(data.asunto);
+                        setCuerpo(data.cuerpo);
+                        toast({ title: '¡Mensaje generado!' });
+                      } else {
+                        setProgressSteps([
+                          { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
+                        ]);
+                        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
+                      }
+                    } catch (error) {
+                      setProgressSteps([
+                        { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
+                      ]);
+                      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
+                    } finally {
+                      setTimeout(() => {
+                        setProgressOpen(false);
+                        setGenerating(false);
+                      }, 1000);
                     }
-                  }) : 
+                  } : 
                   analizarYGuardarMensaje
                 }
                 disabled={!selectedLead || generating || (contactMethod === 'email' && !selectedLead?.business?.email) || (contactMethod === 'whatsapp' && !selectedLead?.business?.telefono)}
@@ -597,7 +623,17 @@ export default function Emails() {
                 <Button
                   className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
                   onClick={() => {
-                    const phone = selectedLead.business.telefono?.replace(/\s+/g, '').replace('+', '');
+                    // Limpiar teléfono: quitar espacios, guiones y el + inicial
+                    let phone = selectedLead.business.telefono || '';
+                    phone = phone.replace(/[\s\-\(\)]/g, ''); // Quitar espacios, guiones, paréntesis
+                    // Si empieza con +, quitarlo para wa.me
+                    if (phone.startsWith('+')) {
+                      phone = phone.substring(1);
+                    }
+                    // Si es español sin prefijo, añadir 34
+                    if (phone.length === 9 && (phone.startsWith('6') || phone.startsWith('7') || phone.startsWith('9'))) {
+                      phone = '34' + phone;
+                    }
                     const message = encodeURIComponent(cuerpo);
                     window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
                   }}
