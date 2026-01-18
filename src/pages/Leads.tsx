@@ -11,6 +11,10 @@ import {
   Edit,
   X,
   Check,
+  Globe,
+  Phone,
+  Instagram,
+  Facebook,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -29,7 +33,7 @@ import {
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { EstadoBadge } from '@/components/ui/estado-badge';
 import { useToast } from '@/hooks/use-toast';
-import type { Business, Lead, EstadoLead } from '@/lib/types';
+import type { Business, Lead, EstadoLead, RedesSociales } from '@/lib/types';
 import {
   Dialog,
   DialogContent,
@@ -66,10 +70,20 @@ export default function Leads() {
   const [filteredLeads, setFilteredLeads] = useState<LeadWithBusiness[]>([]);
   const [search, setSearch] = useState('');
   const [filterEstado, setFilterEstado] = useState<string>('all');
+  const [filterCategoria, setFilterCategoria] = useState<string>('all');
+  const [filterScore, setFilterScore] = useState<string>('all');
   const [selectedLead, setSelectedLead] = useState<LeadWithBusiness | null>(null);
   const [editingNotas, setEditingNotas] = useState(false);
   const [notasTemp, setNotasTemp] = useState('');
   const [newTag, setNewTag] = useState('');
+
+  // Get unique categories from leads
+  const categorias = [...new Set(leads.map(l => l.business?.categoria).filter(Boolean))];
+
+  const parseRedesSociales = (redes: RedesSociales): { instagram?: string; facebook?: string; twitter?: string; linkedin?: string } => {
+    if (!redes) return {};
+    return redes as { instagram?: string; facebook?: string; twitter?: string; linkedin?: string };
+  };
 
   useEffect(() => {
     if (user) {
@@ -79,7 +93,7 @@ export default function Leads() {
 
   useEffect(() => {
     filterLeads();
-  }, [leads, search, filterEstado]);
+  }, [leads, search, filterEstado, filterCategoria, filterScore]);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -128,6 +142,22 @@ export default function Leads() {
 
     if (filterEstado !== 'all') {
       filtered = filtered.filter((l) => l.estado === filterEstado);
+    }
+
+    if (filterCategoria !== 'all') {
+      filtered = filtered.filter((l) => l.business?.categoria === filterCategoria);
+    }
+
+    if (filterScore !== 'all') {
+      if (filterScore === 'high') {
+        filtered = filtered.filter((l) => (l.business?.potencial_score || 0) >= 70);
+      } else if (filterScore === 'medium') {
+        filtered = filtered.filter(
+          (l) => (l.business?.potencial_score || 0) >= 40 && (l.business?.potencial_score || 0) < 70
+        );
+      } else if (filterScore === 'low') {
+        filtered = filtered.filter((l) => (l.business?.potencial_score || 0) < 40);
+      }
     }
 
     setFilteredLeads(filtered);
@@ -327,24 +357,48 @@ export default function Leads() {
     <div className="space-y-6">
       {/* Filters & Actions */}
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-4">
+        <div className="flex flex-wrap gap-3">
           <Input
-            placeholder="Buscar leads..."
+            placeholder="Buscar por nombre..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="max-w-xs"
           />
           <Select value={filterEstado} onValueChange={setFilterEstado}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-36">
               <SelectValue placeholder="Estado" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="all">Todos estados</SelectItem>
               {ESTADOS.map((e) => (
                 <SelectItem key={e} value={e} className="capitalize">
                   {e}
                 </SelectItem>
               ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas categorías</SelectItem>
+              {categorias.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterScore} onValueChange={setFilterScore}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Score" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos scores</SelectItem>
+              <SelectItem value="high">Alto (≥70)</SelectItem>
+              <SelectItem value="medium">Medio (40-69)</SelectItem>
+              <SelectItem value="low">Bajo (&lt;40)</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -397,6 +451,42 @@ export default function Leads() {
                   <span className="text-xs text-muted-foreground">
                     {lead.business?.categoria}
                   </span>
+                </div>
+
+                {/* Contact Info Compact */}
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {lead.business?.web && (
+                    <span className="inline-flex items-center rounded bg-success/10 text-success px-1.5 py-0.5 text-xs">
+                      <Globe className="h-3 w-3" />
+                    </span>
+                  )}
+                  {lead.business?.telefono && (
+                    <span className="inline-flex items-center rounded bg-info/10 text-info px-1.5 py-0.5 text-xs">
+                      <Phone className="h-3 w-3" />
+                    </span>
+                  )}
+                  {lead.business?.email && (
+                    <span className="inline-flex items-center rounded bg-info/10 text-info px-1.5 py-0.5 text-xs">
+                      <Mail className="h-3 w-3" />
+                    </span>
+                  )}
+                  {(() => {
+                    const redes = parseRedesSociales(lead.business?.redes_sociales);
+                    return (
+                      <>
+                        {redes.instagram && (
+                          <span className="inline-flex items-center rounded bg-pink-100 text-pink-700 px-1.5 py-0.5 text-xs">
+                            <Instagram className="h-3 w-3" />
+                          </span>
+                        )}
+                        {redes.facebook && (
+                          <span className="inline-flex items-center rounded bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs">
+                            <Facebook className="h-3 w-3" />
+                          </span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 {lead.etiquetas.length > 0 && (
@@ -533,20 +623,73 @@ export default function Leads() {
                   )}
                 </div>
 
-                {/* Info adicional */}
-                {selectedLead.business?.web && (
-                  <div className="space-y-1">
-                    <Label>Web</Label>
-                    <a
-                      href={selectedLead.business.web}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-sm text-primary hover:underline"
-                    >
-                      {selectedLead.business.web}
-                    </a>
+                {/* Info adicional - Datos de contacto */}
+                <div className="space-y-2">
+                  <Label>Datos de Contacto</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedLead.business?.web && (
+                      <a
+                        href={selectedLead.business.web}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center rounded-md bg-success/10 text-success px-2 py-1 text-xs hover:bg-success/20"
+                      >
+                        <Globe className="mr-1 h-3 w-3" />
+                        Web
+                      </a>
+                    )}
+                    {selectedLead.business?.telefono && (
+                      <a
+                        href={`tel:${selectedLead.business.telefono}`}
+                        className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs hover:bg-info/20"
+                      >
+                        <Phone className="mr-1 h-3 w-3" />
+                        {selectedLead.business.telefono}
+                      </a>
+                    )}
+                    {selectedLead.business?.email && (
+                      <a
+                        href={`mailto:${selectedLead.business.email}`}
+                        className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs hover:bg-info/20"
+                      >
+                        <Mail className="mr-1 h-3 w-3" />
+                        {selectedLead.business.email}
+                      </a>
+                    )}
+                    {(() => {
+                      const redes = parseRedesSociales(selectedLead.business?.redes_sociales);
+                      return (
+                        <>
+                          {redes.instagram && (
+                            <a
+                              href={redes.instagram}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center rounded-md bg-pink-100 text-pink-700 px-2 py-1 text-xs hover:bg-pink-200"
+                            >
+                              <Instagram className="mr-1 h-3 w-3" />
+                              Instagram
+                            </a>
+                          )}
+                          {redes.facebook && (
+                            <a
+                              href={redes.facebook}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center rounded-md bg-blue-100 text-blue-700 px-2 py-1 text-xs hover:bg-blue-200"
+                            >
+                              <Facebook className="mr-1 h-3 w-3" />
+                              Facebook
+                            </a>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
-                )}
+                  {!selectedLead.business?.web && !selectedLead.business?.telefono && !selectedLead.business?.email && (
+                    <p className="text-xs text-muted-foreground italic">Sin datos de contacto disponibles</p>
+                  )}
+                </div>
               </div>
 
               <DialogFooter className="flex-row justify-between gap-2 sm:justify-between">

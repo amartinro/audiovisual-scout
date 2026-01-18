@@ -78,25 +78,37 @@ export default function Emails() {
 
     setGenerating(true);
 
-    // Simulate email generation (placeholder for AI integration)
+    // Generate email based on business data
     setTimeout(() => {
       const business = selectedLead.business;
       const tono = business.tamano_estimado === 'grande' ? 'formal' : 
                    business.tamano_estimado === 'pequeno' ? 'cercano' : 'profesional';
 
       const saludo = tono === 'formal' ? 'Estimados señores' : 
-                     tono === 'cercano' ? `Hola` : 'Buenos días';
+                     tono === 'cercano' ? 'Hola' : 'Buenos días';
 
-      const carencias = !business.web 
-        ? 'He notado que actualmente no cuentan con presencia web' 
-        : 'Tras revisar su presencia digital';
+      // Detectar carencias digitales
+      const carencias: string[] = [];
+      if (!business.web) carencias.push('presencia web');
+      if (!business.redes_sociales || (!business.redes_sociales.instagram && !business.redes_sociales.facebook)) {
+        carencias.push('redes sociales activas');
+      }
+      
+      let carenciasTexto = '';
+      if (carencias.length > 0) {
+        carenciasTexto = `He notado que actualmente no cuentan con ${carencias.join(' ni ')}, lo cual representa una gran oportunidad de mejora.`;
+      } else {
+        carenciasTexto = 'Tras revisar su presencia digital, creo que podríamos potenciar aún más su imagen de marca.';
+      }
 
       const asuntoGenerado = `Propuesta de servicios audiovisuales para ${business.nombre}`;
       const cuerpoGenerado = `${saludo},
 
-Me pongo en contacto con ustedes desde ${business.nombre}, ${business.categoria.toLowerCase()} ubicado en ${business.ciudad}.
+Me dirijo a ustedes como ${business.categoria.toLowerCase()} ubicado en ${business.ciudad}, ya que creo que mis servicios pueden ser de gran valor para su negocio.
 
-${carencias}, me gustaría ofrecerles mis servicios de fotografía y vídeo profesional para potenciar su imagen y presencia en redes sociales.
+${carenciasTexto}
+
+Me gustaría ofrecerles mis servicios de fotografía y vídeo profesional para potenciar su imagen y presencia en redes sociales.
 
 Ofrezco:
 - Fotografía profesional de productos, instalaciones y equipo
@@ -119,7 +131,7 @@ WhatsApp: +34 665 651 344`;
       setCuerpo(cuerpoGenerado);
       setGenerating(false);
       toast({ title: 'Email generado' });
-    }, 1000);
+    }, 500);
   };
 
   const guardarBorrador = async () => {
@@ -199,7 +211,7 @@ WhatsApp: +34 665 651 344`;
             </Select>
 
             {selectedLead && (
-              <div className="rounded-lg border p-4 space-y-2">
+              <div className="rounded-lg border p-4 space-y-3">
                 <p className="font-semibold">{selectedLead.business?.nombre}</p>
                 <p className="text-sm text-muted-foreground">
                   {selectedLead.business?.categoria} • {selectedLead.business?.ciudad}
@@ -207,10 +219,38 @@ WhatsApp: +34 665 651 344`;
                 <p className="text-sm text-muted-foreground">
                   Score: {selectedLead.business?.potencial_score} • Tamaño: {selectedLead.business?.tamano_estimado}
                 </p>
-                {selectedLead.business?.web && (
-                  <a href={selectedLead.business.web} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline">
-                    {selectedLead.business.web}
-                  </a>
+                
+                {/* Contact Info */}
+                <div className="flex flex-wrap gap-2 pt-2 border-t">
+                  {selectedLead.business?.web && (
+                    <a href={selectedLead.business.web} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-success/10 text-success px-2 py-1 rounded hover:bg-success/20">
+                      🌐 Web
+                    </a>
+                  )}
+                  {selectedLead.business?.telefono && (
+                    <a href={`tel:${selectedLead.business.telefono}`} className="inline-flex items-center text-xs bg-info/10 text-info px-2 py-1 rounded hover:bg-info/20">
+                      📞 {selectedLead.business.telefono}
+                    </a>
+                  )}
+                  {selectedLead.business?.email && (
+                    <a href={`mailto:${selectedLead.business.email}`} className="inline-flex items-center text-xs bg-info/10 text-info px-2 py-1 rounded hover:bg-info/20">
+                      ✉️ {selectedLead.business.email}
+                    </a>
+                  )}
+                  {selectedLead.business?.redes_sociales?.instagram && (
+                    <a href={selectedLead.business.redes_sociales.instagram} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-pink-100 text-pink-700 px-2 py-1 rounded hover:bg-pink-200">
+                      📸 Instagram
+                    </a>
+                  )}
+                  {selectedLead.business?.redes_sociales?.facebook && (
+                    <a href={selectedLead.business.redes_sociales.facebook} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">
+                      👍 Facebook
+                    </a>
+                  )}
+                </div>
+                
+                {!selectedLead.business?.web && !selectedLead.business?.telefono && !selectedLead.business?.email && (
+                  <p className="text-xs text-muted-foreground italic">Sin datos de contacto disponibles</p>
                 )}
               </div>
             )}
