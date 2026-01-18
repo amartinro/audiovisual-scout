@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Mail, Loader2, FileText, Sparkles, AlertTriangle, Globe, Phone, Instagram } from 'lucide-react';
+import { Mail, Loader2, FileText, Sparkles, AlertTriangle, Globe, Phone, Instagram, MessageCircle, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -15,8 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { useToast } from '@/hooks/use-toast';
-import type { Lead, Business } from '@/lib/types';
+import type { Lead, Business, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProgressDialog, ProgressStep } from '@/components/ui/progress-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -37,12 +38,32 @@ export default function Emails() {
   const [generating, setGenerating] = useState(false);
   const [progressOpen, setProgressOpen] = useState(false);
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
+  const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
+  const [contactMethod, setContactMethod] = useState<'email' | 'whatsapp'>('email');
 
   useEffect(() => {
     if (user) {
       fetchLeads();
+      fetchUserSettings();
     }
   }, [user]);
+
+  const fetchUserSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      if (data) {
+        setUserSettings(data as UserSettings);
+      }
+    } catch (error) {
+      console.error('Error fetching user settings:', error);
+    }
+  };
 
   useEffect(() => {
     const leadId = searchParams.get('lead');
@@ -77,6 +98,17 @@ export default function Emails() {
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
+  // Auto-select contact method based on available data
+  useEffect(() => {
+    if (selectedLead) {
+      if (selectedLead.business?.email) {
+        setContactMethod('email');
+      } else if (selectedLead.business?.telefono) {
+        setContactMethod('whatsapp');
+      }
+    }
+  }, [selectedLeadId, selectedLead]);
+
   const updateStep = (stepId: string, updates: Partial<ProgressStep>) => {
     setProgressSteps(prev => prev.map(s => 
       s.id === stepId ? { ...s, ...updates } : s
@@ -100,7 +132,12 @@ export default function Emails() {
   const generarEmailConIA = async (business: Business, notas: string | null): Promise<{ asunto: string; cuerpo: string } | null> => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-email', {
-        body: { business, notas }
+        body: { 
+          business, 
+          notas,
+          customPrompt: userSettings?.email_prompt || null,
+          contactMethod
+        }
       });
 
       if (error) throw error;
@@ -456,59 +493,89 @@ export default function Emails() {
               </div>
             )}
 
-            <div className="flex flex-col gap-2">
-              {/* Button for email generation - only if has email */}
-              {selectedLead?.business?.email ? (
-                <Button
-                  className="w-full"
-                  onClick={generarEmail}
-                  disabled={!selectedLead || generating}
+            {/* Contact Method Selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Medio de contacto</Label>
+              <ToggleGroup 
+                type="single" 
+                value={contactMethod} 
+                onValueChange={(value) => value && setContactMethod(value as 'email' | 'whatsapp')}
+                className="justify-start"
+              >
+                <ToggleGroupItem 
+                  value="email" 
+                  aria-label="Email"
+                  disabled={!selectedLead?.business?.email}
+                  className="data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
                 >
-                  {generating ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  {selectedLead?.notas ? 'Generar Nuevo Email' : 'Analizar y Generar Email'}
-                </Button>
-              ) : (
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  onClick={analizarYGuardarMensaje}
-                  disabled={!selectedLead || generating}
+                  <Mail className="h-4 w-4 mr-2" />
+                  Email
+                </ToggleGroupItem>
+                <ToggleGroupItem 
+                  value="whatsapp" 
+                  aria-label="WhatsApp"
+                  disabled={!selectedLead?.business?.telefono}
+                  className="data-[state=on]:bg-success data-[state=on]:text-success-foreground"
                 >
-                  {generating ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Sparkles className="mr-2 h-4 w-4" />
-                  )}
-                  Generar Mensaje de Contacto
-                </Button>
+                  <MessageCircle className="h-4 w-4 mr-2" />
+                  WhatsApp
+                </ToggleGroupItem>
+              </ToggleGroup>
+              {selectedLead && !selectedLead.business?.email && !selectedLead.business?.telefono && (
+                <p className="text-xs text-muted-foreground">Este lead no tiene email ni teléfono</p>
               )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button
+                className="w-full"
+                onClick={selectedLead?.notas ? 
+                  () => generarEmailConIA(selectedLead.business, selectedLead.notas).then(data => {
+                    if (data) {
+                      setAsunto(data.asunto);
+                      setCuerpo(data.cuerpo);
+                      toast({ title: '¡Mensaje generado!' });
+                    }
+                  }) : 
+                  analizarYGuardarMensaje
+                }
+                disabled={!selectedLead || generating || (contactMethod === 'email' && !selectedLead?.business?.email) || (contactMethod === 'whatsapp' && !selectedLead?.business?.telefono)}
+              >
+                {generating ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {selectedLead?.notas 
+                  ? `Generar ${contactMethod === 'whatsapp' ? 'Mensaje WhatsApp' : 'Email'}` 
+                  : `Analizar y Generar ${contactMethod === 'whatsapp' ? 'WhatsApp' : 'Email'}`
+                }
+              </Button>
             </div>
           </CardContent>
         </Card>
 
-        {/* Email Editor */}
+        {/* Message Editor */}
         <Card className="shadow-card">
           <CardHeader>
-            <CardTitle>Editor de Email</CardTitle>
-            <CardDescription>Revisa y edita el email antes de guardarlo</CardDescription>
+            <CardTitle>Editor de {contactMethod === 'whatsapp' ? 'Mensaje' : 'Email'}</CardTitle>
+            <CardDescription>Revisa y edita el mensaje antes de enviarlo</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Asunto</Label>
-              <Input
-                placeholder="Asunto del email..."
-                value={asunto}
-                onChange={(e) => setAsunto(e.target.value)}
-              />
-            </div>
+            {contactMethod === 'email' && (
+              <div className="space-y-2">
+                <Label>Asunto</Label>
+                <Input
+                  placeholder="Asunto del email..."
+                  value={asunto}
+                  onChange={(e) => setAsunto(e.target.value)}
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Cuerpo</Label>
               <Textarea
-                placeholder="Contenido del email..."
+                placeholder={contactMethod === 'whatsapp' ? 'Mensaje de WhatsApp...' : 'Contenido del email...'}
                 value={cuerpo}
                 onChange={(e) => setCuerpo(e.target.value)}
                 rows={14}
@@ -518,12 +585,43 @@ export default function Emails() {
             <div className="flex gap-2">
               <Button
                 className="flex-1"
+                variant="outline"
                 onClick={guardarBorrador}
-                disabled={!asunto || !cuerpo}
+                disabled={!cuerpo || (contactMethod === 'email' && !asunto)}
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Guardar Borrador
               </Button>
+              
+              {contactMethod === 'whatsapp' && selectedLead?.business?.telefono && (
+                <Button
+                  className="flex-1 bg-success hover:bg-success/90 text-success-foreground"
+                  onClick={() => {
+                    const phone = selectedLead.business.telefono?.replace(/\s+/g, '').replace('+', '');
+                    const message = encodeURIComponent(cuerpo);
+                    window.open(`https://wa.me/${phone}?text=${message}`, '_blank');
+                  }}
+                  disabled={!cuerpo}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Enviar por WhatsApp
+                </Button>
+              )}
+              
+              {contactMethod === 'email' && selectedLead?.business?.email && (
+                <Button
+                  className="flex-1"
+                  onClick={() => {
+                    const subject = encodeURIComponent(asunto);
+                    const body = encodeURIComponent(cuerpo);
+                    window.open(`mailto:${selectedLead.business.email}?subject=${subject}&body=${body}`, '_blank');
+                  }}
+                  disabled={!asunto || !cuerpo}
+                >
+                  <Send className="mr-2 h-4 w-4" />
+                  Abrir en Cliente de Email
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
