@@ -36,7 +36,11 @@ export default function Negocios() {
   const [search, setSearch] = useState('');
   const [filterTamano, setFilterTamano] = useState<string>('all');
   const [filterScore, setFilterScore] = useState<string>('all');
+  const [filterCategoria, setFilterCategoria] = useState<string>('all');
   const [savingLead, setSavingLead] = useState<string | null>(null);
+
+  // Get unique categories from businesses
+  const categorias = [...new Set(businesses.map(b => b.categoria).filter(Boolean))];
 
   useEffect(() => {
     fetchBusinesses();
@@ -44,7 +48,7 @@ export default function Negocios() {
 
   useEffect(() => {
     filterBusinesses();
-  }, [businesses, search, filterTamano, filterScore]);
+  }, [businesses, search, filterTamano, filterScore, filterCategoria]);
 
   const fetchBusinesses = async () => {
     setLoading(true);
@@ -83,6 +87,10 @@ export default function Negocios() {
 
     if (filterTamano !== 'all') {
       filtered = filtered.filter((b) => b.tamano_estimado === filterTamano);
+    }
+
+    if (filterCategoria !== 'all') {
+      filtered = filtered.filter((b) => b.categoria === filterCategoria);
     }
 
     if (filterScore !== 'all') {
@@ -183,30 +191,43 @@ export default function Negocios() {
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="flex flex-wrap gap-4">
+      <div className="flex flex-wrap gap-3">
         <Input
-          placeholder="Buscar por nombre, categoría..."
+          placeholder="Buscar por nombre..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
         />
-        <Select value={filterTamano} onValueChange={setFilterTamano}>
+        <Select value={filterCategoria} onValueChange={setFilterCategoria}>
           <SelectTrigger className="w-40">
+            <SelectValue placeholder="Categoría" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todas categorías</SelectItem>
+            {categorias.map((cat) => (
+              <SelectItem key={cat} value={cat}>
+                {cat}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filterTamano} onValueChange={setFilterTamano}>
+          <SelectTrigger className="w-36">
             <SelectValue placeholder="Tamaño" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los tamaños</SelectItem>
+            <SelectItem value="all">Todos tamaños</SelectItem>
             <SelectItem value="pequeno">Pequeño</SelectItem>
             <SelectItem value="mediano">Mediano</SelectItem>
             <SelectItem value="grande">Grande</SelectItem>
           </SelectContent>
         </Select>
         <Select value={filterScore} onValueChange={setFilterScore}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-36">
             <SelectValue placeholder="Potencial" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos</SelectItem>
+            <SelectItem value="all">Todos scores</SelectItem>
             <SelectItem value="high">Alto (≥70)</SelectItem>
             <SelectItem value="medium">Medio (40-69)</SelectItem>
             <SelectItem value="low">Bajo (&lt;40)</SelectItem>
