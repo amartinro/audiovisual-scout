@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import {
   Users,
   Loader2,
@@ -14,7 +14,6 @@ import {
   Instagram,
   Facebook,
   Info,
-  StopCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -64,6 +63,8 @@ import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { LeadCard } from '@/components/leads/LeadCard';
 import { LeadListItem } from '@/components/leads/LeadListItem';
 import { GoogleMapsPopup } from '@/components/ui/google-maps-popup';
+import { PaginationControls } from '@/components/ui/pagination-controls';
+import { LeadEditDialog } from '@/components/leads/LeadEditDialog';
 
 interface LeadWithBusiness extends Lead {
   business: Business;
@@ -88,6 +89,13 @@ export default function Leads() {
   const [notasTemp, setNotasTemp] = useState('');
   const [newTag, setNewTag] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  
+  // Edit dialog
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
 
   // Get unique categories from leads
   const categorias = [...new Set(leads.map(l => l.business?.categoria).filter(Boolean))];
@@ -118,6 +126,11 @@ export default function Leads() {
   useEffect(() => {
     filterLeads();
   }, [leads, search, filterEstado, filterCategoria, filterScore, filterContacto]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, filterEstado, filterCategoria, filterScore, filterContacto]);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -203,6 +216,14 @@ export default function Leads() {
 
     setFilteredLeads(filtered);
   };
+
+  // Paginated leads
+  const paginatedLeads = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredLeads.slice(startIndex, startIndex + pageSize);
+  }, [filteredLeads, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredLeads.length / pageSize);
 
   const toggleContactFilter = (tipo: string) => {
     setFilterContacto(prev => 
@@ -402,6 +423,11 @@ export default function Leads() {
     setEditingNotas(false);
   };
 
+  const handleLeadUpdated = (updatedLead: LeadWithBusiness) => {
+    setLeads(prev => prev.map(l => l.id === updatedLead.id ? updatedLead : l));
+    setSelectedLead(updatedLead);
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -543,20 +569,40 @@ export default function Leads() {
         </div>
       ) : viewMode === 'grid' ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredLeads.map((lead) => (
+          {paginatedLeads.map((lead) => (
             <LeadCard key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
-          {filteredLeads.map((lead) => (
+          {paginatedLeads.map((lead) => (
             <LeadListItem key={lead.id} lead={lead} onClick={() => handleLeadClick(lead)} />
           ))}
         </div>
       )}
 
+      {/* Pagination */}
+      {filteredLeads.length > 0 && (
+        <PaginationControls
+          currentPage={currentPage}
+          totalPages={totalPages}
+          pageSize={pageSize}
+          totalItems={filteredLeads.length}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+        />
+      )}
+
+      {/* Lead Edit Dialog */}
+      <LeadEditDialog
+        lead={selectedLead}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSave={handleLeadUpdated}
+      />
+
       {/* Lead Detail Dialog */}
-      <Dialog open={!!selectedLead} onOpenChange={() => setSelectedLead(null)}>
+      <Dialog open={!!selectedLead && !editDialogOpen} onOpenChange={() => setSelectedLead(null)}>
         <DialogContent className="max-w-lg">
           {selectedLead && (
             <>
@@ -765,31 +811,38 @@ export default function Leads() {
               </div>
 
               <DialogFooter className="flex-row justify-between gap-2 sm:justify-between">
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button variant="outline" className="text-destructive">
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Eliminar
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>¿Eliminar lead?</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        Esta acción no se puede deshacer.
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                      <AlertDialogAction
-                        onClick={() => eliminarLead(selectedLead.id)}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      >
+                <div className="flex gap-2">
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" className="text-destructive">
+                        <Trash2 className="mr-2 h-4 w-4" />
                         Eliminar
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>¿Eliminar lead?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Esta acción no se puede deshacer.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={() => eliminarLead(selectedLead.id)}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
+                          Eliminar
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+
+                  <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
+                    <Edit className="mr-2 h-4 w-4" />
+                    Editar
+                  </Button>
+                </div>
 
                 <Link to={`/comunicaciones?lead=${selectedLead.id}`}>
                   <Button>
