@@ -685,12 +685,13 @@ export default function Leads() {
                       value={notasTemp}
                       onChange={(e) => setNotasTemp(e.target.value)}
                       placeholder="Añade notas sobre este lead..."
-                      rows={3}
+                      rows={4}
+                      className="max-h-40 overflow-y-auto"
                     />
                   ) : (
-                    <p className="rounded-lg bg-muted p-3 text-sm">
-                      {selectedLead.notas || 'Sin notas'}
-                    </p>
+                    <div className="rounded-lg bg-muted p-3 text-sm max-h-40 overflow-y-auto">
+                      <p className="whitespace-pre-wrap">{selectedLead.notas || 'Sin notas'}</p>
+                    </div>
                   )}
                 </div>
 
