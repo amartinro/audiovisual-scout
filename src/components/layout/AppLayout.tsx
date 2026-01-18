@@ -25,7 +25,7 @@ const navItems = [
   { href: '/', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/buscar', label: 'Buscar Leads', icon: Search },
   { href: '/leads', label: 'Leads', icon: Users },
-  { href: '/emails', label: 'Emails', icon: Mail },
+  { href: '/comunicaciones', label: 'Comunicaciones', icon: Mail },
   { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
