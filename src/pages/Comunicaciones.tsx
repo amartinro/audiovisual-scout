@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Mail, Loader2, FileText, Sparkles, AlertTriangle, Globe, Phone, Instagram, MessageCircle, Send } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,6 +21,7 @@ import type { Lead, Business, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProgressDialog, ProgressStep } from '@/components/ui/progress-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { PaginationControls } from '@/components/ui/pagination-controls';
 
 interface LeadWithBusiness extends Lead {
   business: Business;
@@ -40,6 +41,10 @@ export default function Comunicaciones() {
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [contactMethod, setContactMethod] = useState<'email' | 'whatsapp'>('email');
+  
+  // Pagination for lead selector
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     if (user) {
@@ -98,6 +103,14 @@ export default function Comunicaciones() {
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
+  // Paginated leads for selector
+  const paginatedLeads = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return leads.slice(startIndex, startIndex + pageSize);
+  }, [leads, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(leads.length / pageSize);
+
   // Auto-select contact method based on available data
   useEffect(() => {
     if (selectedLead) {
@@ -129,8 +142,9 @@ export default function Comunicaciones() {
     }
   };
 
-  const generarEmailConIA = async (business: Business, notas: string | null): Promise<{ asunto: string; cuerpo: string } | null> => {
+  const generarMensajeConIA = async (business: Business, notas: string | null): Promise<{ asunto: string; cuerpo: string } | null> => {
     try {
+      // Siempre usar el prompt de configuración del usuario
       const { data, error } = await supabase.functions.invoke('generate-email', {
         body: { 
           business, 
@@ -143,12 +157,12 @@ export default function Comunicaciones() {
       if (error) throw error;
       return data;
     } catch (error) {
-      console.error('Error generating email:', error);
+      console.error('Error generating message:', error);
       return null;
     }
   };
 
-  const analizarYGuardarMensaje = async () => {
+  const analizarYGenerarMensaje = async () => {
     if (!selectedLead) return;
 
     const business = selectedLead.business;
@@ -202,15 +216,15 @@ export default function Comunicaciones() {
         l.id === selectedLead.id ? { ...l, notas: analysis } : l
       ));
 
-      // Step 3: Generate message
+      // Step 3: Generate message using analysis data
       updateStep('generate', { status: 'loading', detail: 'Redactando mensaje personalizado...' });
       
-      const emailData = await generarEmailConIA(business, analysis);
+      const messageData = await generarMensajeConIA(business, analysis);
 
-      if (emailData) {
+      if (messageData) {
         updateStep('generate', { status: 'complete', detail: 'Mensaje generado' });
-        setAsunto(emailData.asunto);
-        setCuerpo(emailData.cuerpo);
+        setAsunto(messageData.asunto);
+        setCuerpo(messageData.cuerpo);
         
         toast({ title: '¡Mensaje generado con éxito!' });
       } else {
@@ -236,104 +250,41 @@ export default function Comunicaciones() {
     }
   };
 
-  const generarEmail = async () => {
+  const generarMensaje = async () => {
     if (!selectedLead) return;
 
     const business = selectedLead.business;
 
-    // Check if business has email for sending
-    if (!business.email) {
-      toast({
-        variant: 'destructive',
-        title: 'Email requerido',
-        description: 'Este negocio no tiene email asociado. Usa "Generar Mensaje" para crear un mensaje de contacto alternativo.',
-      });
-      return;
-    }
-
     setGenerating(true);
     setProgressOpen(true);
 
-    // Check if we need to analyze first
-    const needsAnalysis = !selectedLead.notas;
-
-    const initialSteps: ProgressStep[] = needsAnalysis
-      ? [
-          { id: 'analyze', label: 'Analizando negocio...', status: 'pending', detail: 'Recopilando información del negocio' },
-          { id: 'save-notes', label: 'Guardando análisis', status: 'pending', detail: 'Almacenando notas en la base de datos' },
-          { id: 'generate', label: 'Generando email personalizado', status: 'pending', detail: 'Redactando email con IA' },
-        ]
-      : [
-          { id: 'generate', label: 'Generando email personalizado', status: 'pending', detail: 'Redactando email con IA' },
-        ];
-
-    setProgressSteps(initialSteps);
+    setProgressSteps([
+      { id: 'generate', label: 'Generando mensaje personalizado', status: 'loading', detail: 'Usando prompt de configuración y datos del análisis...' },
+    ]);
 
     try {
-      let notas = selectedLead.notas;
+      // Usar las notas del lead (análisis previo) y el prompt de configuración
+      const messageData = await generarMensajeConIA(business, selectedLead.notas);
 
-      // Step 1: Analyze if needed
-      if (needsAnalysis) {
-        updateStep('analyze', { status: 'loading', detail: `Analizando ${business.nombre}...` });
-        
-        const analysis = await analizarNegocio(business);
-        
-        if (analysis) {
-          updateStep('analyze', { status: 'complete', detail: 'Análisis completado' });
-          notas = analysis;
-
-          // Step 2: Save notes
-          updateStep('save-notes', { status: 'loading', detail: 'Guardando en base de datos...' });
-          
-          const { error: updateError } = await supabase
-            .from('leads')
-            .update({ notas })
-            .eq('id', selectedLead.id);
-
-          if (updateError) {
-            updateStep('save-notes', { status: 'error', detail: 'Error al guardar' });
-            throw updateError;
-          }
-
-          updateStep('save-notes', { status: 'complete', detail: 'Notas guardadas' });
-
-          // Update local state
-          setLeads(prev => prev.map(l => 
-            l.id === selectedLead.id ? { ...l, notas } : l
-          ));
-        } else {
-          updateStep('analyze', { status: 'error', detail: 'No se pudo analizar' });
-        }
-      }
-
-      // Step 3: Generate email
-      updateStep('generate', { status: 'loading', detail: 'Redactando email personalizado...' });
-      
-      const emailData = await generarEmailConIA(business, notas);
-
-      if (emailData) {
-        updateStep('generate', { status: 'complete', detail: 'Email generado' });
-        setAsunto(emailData.asunto);
-        setCuerpo(emailData.cuerpo);
-        
-        toast({ title: '¡Email generado con éxito!' });
+      if (messageData) {
+        setProgressSteps([
+          { id: 'generate', label: 'Generando mensaje personalizado', status: 'complete', detail: 'Mensaje generado' },
+        ]);
+        setAsunto(messageData.asunto);
+        setCuerpo(messageData.cuerpo);
+        toast({ title: '¡Mensaje generado!' });
       } else {
-        updateStep('generate', { status: 'error', detail: 'Error al generar email' });
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: 'No se pudo generar el email. Inténtalo de nuevo.',
-        });
+        setProgressSteps([
+          { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
+        ]);
+        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
       }
     } catch (error) {
-      console.error('Error in email generation:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Ocurrió un error durante el proceso.',
-      });
+      setProgressSteps([
+        { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
+      ]);
+      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
     } finally {
-      // Keep dialog open briefly to show completion
       setTimeout(() => {
         setProgressOpen(false);
         setGenerating(false);
@@ -342,11 +293,11 @@ export default function Comunicaciones() {
   };
 
   const guardarBorrador = async () => {
-    if (!selectedLead || !asunto || !cuerpo) {
+    if (!selectedLead || !cuerpo || (contactMethod === 'email' && !asunto)) {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Completa el asunto y el cuerpo del email',
+        description: contactMethod === 'email' ? 'Completa el asunto y el cuerpo del mensaje' : 'Completa el cuerpo del mensaje',
       });
       return;
     }
@@ -354,7 +305,7 @@ export default function Comunicaciones() {
     try {
       const { error } = await supabase.from('emails').insert({
         lead_id: selectedLead.id,
-        asunto,
+        asunto: contactMethod === 'whatsapp' ? 'Mensaje WhatsApp' : asunto,
         cuerpo,
         estado: 'borrador',
       });
@@ -363,12 +314,10 @@ export default function Comunicaciones() {
 
       toast({
         title: '¡Borrador guardado!',
-        description: 'Email guardado en la base de datos',
+        description: 'Mensaje guardado en la base de datos',
       });
 
-      // Reset form
-      setAsunto('');
-      setCuerpo('');
+      // NO limpiar el formulario después de guardar
     } catch (error) {
       console.error('Error saving draft:', error);
       toast({
@@ -398,7 +347,7 @@ export default function Comunicaciones() {
       <Alert>
         <MessageCircle className="h-4 w-4" />
         <AlertDescription>
-          Genera mensajes personalizados para tus leads (Email o WhatsApp). El primer mensaje analiza el lead automáticamente.
+          Genera mensajes personalizados para tus leads (Email o WhatsApp). El mensaje se genera usando el prompt de configuración y los datos del análisis del negocio.
         </AlertDescription>
       </Alert>
 
@@ -407,7 +356,7 @@ export default function Comunicaciones() {
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Seleccionar Lead</CardTitle>
-            <CardDescription>Elige el lead para generar el mensaje</CardDescription>
+            <CardDescription>Elige el lead para generar el mensaje ({leads.length} leads)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
@@ -415,11 +364,11 @@ export default function Comunicaciones() {
                 <SelectValue placeholder="Seleccionar lead..." />
               </SelectTrigger>
               <SelectContent>
-                {leads.map((lead) => (
+                {paginatedLeads.map((lead) => (
                   <SelectItem key={lead.id} value={lead.id}>
                     <span className="flex items-center gap-2">
                       {lead.business?.nombre} - {lead.business?.ciudad}
-                      {!lead.business?.email && (
+                      {!lead.business?.email && !lead.business?.telefono && (
                         <AlertTriangle className="h-3 w-3 text-warning" />
                       )}
                     </span>
@@ -427,6 +376,19 @@ export default function Comunicaciones() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Pagination for lead selector */}
+            {leads.length > pageSize && (
+              <PaginationControls
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={leads.length}
+                onPageChange={setCurrentPage}
+                onPageSizeChange={setPageSize}
+                pageSizeOptions={[10, 25, 50]}
+              />
+            )}
 
             {selectedLead && (
               <div className="rounded-lg border p-4 space-y-3">
@@ -467,18 +429,14 @@ export default function Comunicaciones() {
                   )}
                 </div>
 
-                {/* Email warning - now allows message generation */}
-                {!selectedLead.business?.email && (
+                {/* Contact warning */}
+                {!selectedLead.business?.email && !selectedLead.business?.telefono && (
                   <Alert className="mt-2">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Sin email asociado. Puedes generar un mensaje de contacto para usar en redes sociales o teléfono.
+                      Sin email ni teléfono. Puedes editar el lead para añadir datos de contacto.
                     </AlertDescription>
                   </Alert>
-                )}
-                
-                {!selectedLead.business?.web && !selectedLead.business?.telefono && !selectedLead.business?.email && (
-                  <p className="text-xs text-muted-foreground italic">Sin datos de contacto disponibles</p>
                 )}
 
                 {/* Notes section */}
@@ -529,42 +487,7 @@ export default function Comunicaciones() {
             <div className="flex flex-col gap-2">
               <Button
                 className="w-full"
-                onClick={selectedLead?.notas ? 
-                  async () => {
-                    setGenerating(true);
-                    setProgressOpen(true);
-                    setProgressSteps([
-                      { id: 'generate', label: 'Generando mensaje personalizado', status: 'loading', detail: 'Redactando mensaje con IA...' },
-                    ]);
-                    try {
-                      const data = await generarEmailConIA(selectedLead.business, selectedLead.notas);
-                      if (data) {
-                        setProgressSteps([
-                          { id: 'generate', label: 'Generando mensaje personalizado', status: 'complete', detail: 'Mensaje generado' },
-                        ]);
-                        setAsunto(data.asunto);
-                        setCuerpo(data.cuerpo);
-                        toast({ title: '¡Mensaje generado!' });
-                      } else {
-                        setProgressSteps([
-                          { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
-                        ]);
-                        toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
-                      }
-                    } catch (error) {
-                      setProgressSteps([
-                        { id: 'generate', label: 'Generando mensaje personalizado', status: 'error', detail: 'Error al generar' },
-                      ]);
-                      toast({ variant: 'destructive', title: 'Error', description: 'No se pudo generar el mensaje' });
-                    } finally {
-                      setTimeout(() => {
-                        setProgressOpen(false);
-                        setGenerating(false);
-                      }, 1000);
-                    }
-                  } : 
-                  analizarYGuardarMensaje
-                }
+                onClick={selectedLead?.notas ? generarMensaje : analizarYGenerarMensaje}
                 disabled={!selectedLead || generating || (contactMethod === 'email' && !selectedLead?.business?.email) || (contactMethod === 'whatsapp' && !selectedLead?.business?.telefono)}
               >
                 {generating ? (
