@@ -23,6 +23,7 @@ export type Database = {
           email: string | null
           fuente_datos: string
           id: string
+          motivo_scoring: string | null
           nombre: string
           potencial_score: number
           presencia_digital_score: number
@@ -40,6 +41,7 @@ export type Database = {
           email?: string | null
           fuente_datos?: string
           id?: string
+          motivo_scoring?: string | null
           nombre: string
           potencial_score?: number
           presencia_digital_score?: number
@@ -57,6 +59,7 @@ export type Database = {
           email?: string | null
           fuente_datos?: string
           id?: string
+          motivo_scoring?: string | null
           nombre?: string
           potencial_score?: number
           presencia_digital_score?: number

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Search, MapPin, Loader2, Building2, Globe, AlertCircle, Phone, Mail, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Search, MapPin, Loader2, Building2, Globe, AlertCircle, Phone, Mail, RefreshCw, StopCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,7 @@ import { ScoreBadge } from '@/components/ui/score-badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { calcularPotencialScore, calcularPresenciaDigitalScore } from '@/lib/scoring';
+import { calcularPotencialScoreConMotivo, calcularPresenciaDigitalScore, calcularPotencialScore } from '@/lib/scoring';
 import type { TamanoNegocio, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
@@ -139,6 +139,7 @@ export default function BuscarNegocios() {
   const [ciudad, setCiudad] = useState('Salamanca');
   const [query, setQuery] = useState('');
   const [settings, setSettings] = useState<UserSettings | null>(null);
+  const stopEnrichmentRef = useRef(false);
 
   useEffect(() => {
     if (user) {
@@ -365,6 +366,7 @@ export default function BuscarNegocios() {
     setEnrichingContacts(true);
     setEnrichProgress(0);
     setEnrichedCount(0);
+    stopEnrichmentRef.current = false;
     let saved = 0;
     let duplicates = 0;
     let enriched = 0;
@@ -372,9 +374,16 @@ export default function BuscarNegocios() {
     const total = businessResults.length;
 
     for (let i = 0; i < businessResults.length; i++) {
+      // Check if user wants to stop
+      if (stopEnrichmentRef.current) {
+        toast({
+          title: 'Enriquecimiento detenido',
+          description: `Procesados ${i} de ${total} leads`,
+        });
+        break;
+      }
+
       const biz = businessResults[i];
-      
-      // Update progress
       setEnrichProgress(Math.round(((i + 1) / total) * 100));
 
       // Build initial contact info
@@ -417,7 +426,7 @@ export default function BuscarNegocios() {
         biz.tipo === 'supermarket' ? 'mediano' : 'pequeno';
 
       const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedesSociales);
-      const potencialScore = calcularPotencialScore({
+      const scoringResult = calcularPotencialScoreConMotivo({
         tamanoEstimado,
         tieneWeb,
         webPobre: false,

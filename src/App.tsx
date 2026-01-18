@@ -8,7 +8,6 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
 import BuscarNegocios from "./pages/BuscarNegocios";
-import Negocios from "./pages/Negocios";
 import Leads from "./pages/Leads";
 import Emails from "./pages/Emails";
 import Configuracion from "./pages/Configuracion";
@@ -41,9 +40,8 @@ function AppRoutes() {
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/buscar" element={<ProtectedRoute><BuscarNegocios /></ProtectedRoute>} />
-      <Route path="/negocios" element={<ProtectedRoute><Negocios /></ProtectedRoute>} />
       <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-<Route path="/emails" element={<ProtectedRoute><Emails /></ProtectedRoute>} />
+      <Route path="/emails" element={<ProtectedRoute><Emails /></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Configuracion /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>

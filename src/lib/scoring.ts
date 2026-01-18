@@ -13,6 +13,11 @@ export interface ScoringInput {
   tieneRedesSociales?: boolean;
 }
 
+export interface ScoringResult {
+  score: number;
+  motivo: string;
+}
+
 // Count total contact methods
 export function countContactMethods(input: {
   tieneWeb?: boolean;
@@ -51,29 +56,35 @@ const CATEGORIAS_ALTO_POTENCIAL = [
   'bienestar',
 ];
 
-export function calcularPotencialScore(input: ScoringInput): number {
+export function calcularPotencialScoreConMotivo(input: ScoringInput): ScoringResult {
   let score = 0;
+  const motivos: string[] = [];
 
   // Factor 1: Tamaño del negocio
   switch (input.tamanoEstimado) {
     case 'pequeno':
       score += 10;
+      motivos.push('Negocio pequeño (+10)');
       break;
     case 'mediano':
       score += 25;
+      motivos.push('Negocio mediano (+25)');
       break;
     case 'grande':
       score += 35;
+      motivos.push('Negocio grande (+35)');
       break;
   }
 
   // Factor 2: Presencia digital
   if (!input.tieneWeb || input.webPobre) {
     score += 25;
+    motivos.push('Sin web o web pobre (+25)');
   }
 
   if (input.redesSocialesAbandonadas) {
     score += 25;
+    motivos.push('Redes sociales abandonadas (+25)');
   }
 
   // Factor 3: Tipo de negocio
@@ -84,12 +95,13 @@ export function calcularPotencialScore(input: ScoringInput): number {
   
   if (esAltoPotencial) {
     score += 15;
+    motivos.push(`Sector alto potencial: ${input.tipoNegocio} (+15)`);
   } else {
     score += 5;
+    motivos.push(`Sector estándar: ${input.tipoNegocio} (+5)`);
   }
 
   // Factor 4: PENALIZACIÓN por falta de contactos
-  // Un negocio sin suficientes métodos de contacto tiene menor valor práctico
   const contactCount = countContactMethods({
     tieneWeb: input.tieneWeb,
     tieneTelefono: input.tieneTelefono,
@@ -98,16 +110,26 @@ export function calcularPotencialScore(input: ScoringInput): number {
   });
 
   if (contactCount === 0) {
-    // Sin ningún contacto: penalización severa (-40 puntos)
     score -= 40;
+    motivos.push('Sin contactos disponibles (-40)');
   } else if (contactCount === 1) {
-    // Solo 1 método de contacto: penalización moderada (-20 puntos)
     score -= 20;
+    motivos.push('Solo 1 método de contacto (-20)');
+  } else {
+    motivos.push(`${contactCount} métodos de contacto`);
   }
-  // 2+ métodos: sin penalización
 
   // Limitar entre 0 y 100
-  return Math.max(0, Math.min(score, 100));
+  const finalScore = Math.max(0, Math.min(score, 100));
+  
+  return {
+    score: finalScore,
+    motivo: motivos.join(' | ')
+  };
+}
+
+export function calcularPotencialScore(input: ScoringInput): number {
+  return calcularPotencialScoreConMotivo(input).score;
 }
 
 export function calcularPresenciaDigitalScore(tieneWeb: boolean, webPobre: boolean, redesAbandonadas: boolean): number {
