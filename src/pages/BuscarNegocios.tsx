@@ -19,68 +19,100 @@ import { calcularPotencialScore, calcularPresenciaDigitalScore } from '@/lib/sco
 import type { TamanoNegocio, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-interface OSMResult {
-  place_id: number;
-  display_name: string;
-  name?: string;
+interface OverpassElement {
+  id: number;
   type: string;
-  address: {
-    road?: string;
-    house_number?: string;
-    city?: string;
-    town?: string;
-    village?: string;
-    municipality?: string;
-    state?: string;
-  };
-  extratags?: {
+  lat?: number;
+  lon?: number;
+  center?: { lat: number; lon: number };
+  tags?: {
+    name?: string;
+    amenity?: string;
+    shop?: string;
+    tourism?: string;
+    leisure?: string;
+    office?: string;
+    craft?: string;
+    'addr:street'?: string;
+    'addr:housenumber'?: string;
+    'addr:city'?: string;
     website?: string;
     phone?: string;
     email?: string;
     'contact:phone'?: string;
     'contact:email'?: string;
+    'contact:website'?: string;
     'contact:instagram'?: string;
     'contact:facebook'?: string;
     'contact:twitter'?: string;
     'contact:linkedin'?: string;
+    opening_hours?: string;
+    cuisine?: string;
+    brand?: string;
   };
 }
 
+interface BusinessResult {
+  id: number;
+  nombre: string;
+  categoria: string;
+  tipo: string;
+  direccion: string;
+  ciudad: string;
+  lat: number;
+  lon: number;
+  web: string | null;
+  telefono: string | null;
+  email: string | null;
+  redesSociales: {
+    instagram?: string | null;
+    facebook?: string | null;
+    twitter?: string | null;
+    linkedin?: string | null;
+  } | null;
+}
+
+// Categorías con sus queries de Overpass
 const CATEGORIAS = [
-  { value: 'all', label: 'Todas las categorías' },
-  { value: 'restaurant', label: 'Restaurante' },
-  { value: 'hotel', label: 'Hotel' },
-  { value: 'bar', label: 'Bar' },
-  { value: 'cafe', label: 'Cafetería' },
-  { value: 'gym', label: 'Gimnasio' },
-  { value: 'clinic', label: 'Clínica' },
-  { value: 'beauty', label: 'Estética' },
-  { value: 'winery', label: 'Bodega' },
-  { value: 'events', label: 'Eventos' },
-  { value: 'tourism', label: 'Turismo' },
-  { value: 'shop', label: 'Comercio' },
-  { value: 'services', label: 'Servicios' },
+  { value: 'all', label: 'Todas las categorías', query: '' },
+  { value: 'restaurant', label: 'Restaurante', query: '["amenity"="restaurant"]' },
+  { value: 'hotel', label: 'Hotel', query: '["tourism"="hotel"]' },
+  { value: 'bar', label: 'Bar', query: '["amenity"="bar"]' },
+  { value: 'cafe', label: 'Cafetería', query: '["amenity"="cafe"]' },
+  { value: 'gym', label: 'Gimnasio', query: '["leisure"="fitness_centre"]' },
+  { value: 'clinic', label: 'Clínica', query: '["amenity"~"clinic|doctors|dentist|hospital"]' },
+  { value: 'beauty', label: 'Estética', query: '["shop"~"beauty|hairdresser|cosmetics"]' },
+  { value: 'winery', label: 'Bodega', query: '["craft"="winery"]' },
+  { value: 'events', label: 'Eventos', query: '["amenity"~"events_venue|conference_centre"]' },
+  { value: 'tourism', label: 'Turismo', query: '["tourism"~"attraction|museum|gallery|hotel|guest_house"]' },
+  { value: 'shop', label: 'Comercio', query: '["shop"]' },
+  { value: 'pub', label: 'Pub', query: '["amenity"="pub"]' },
+  { value: 'bakery', label: 'Panadería', query: '["shop"="bakery"]' },
+  { value: 'pharmacy', label: 'Farmacia', query: '["amenity"="pharmacy"]' },
 ];
 
-const CIUDADES_SALAMANCA = [
-  'Salamanca',
-  'Béjar',
-  'Ciudad Rodrigo',
-  'Santa Marta de Tormes',
-  'Villares de la Reina',
-  'Carbajosa de la Sagrada',
-  'Peñaranda de Bracamonte',
-  'Alba de Tormes',
-  'Guijuelo',
-  'Villamayor',
-];
+// Bounding boxes aproximados para ciudades de Salamanca
+const CIUDADES_BBOX: Record<string, { south: number; west: number; north: number; east: number }> = {
+  'Salamanca': { south: 40.93, west: -5.72, north: 41.00, east: -5.62 },
+  'Béjar': { south: 40.36, west: -5.80, north: 40.40, east: -5.74 },
+  'Ciudad Rodrigo': { south: 40.58, west: -6.56, north: 40.62, east: -6.50 },
+  'Santa Marta de Tormes': { south: 40.93, west: -5.65, north: 40.96, east: -5.60 },
+  'Villares de la Reina': { south: 40.98, west: -5.68, north: 41.01, east: -5.63 },
+  'Carbajosa de la Sagrada': { south: 40.92, west: -5.70, north: 40.95, east: -5.65 },
+  'Peñaranda de Bracamonte': { south: 40.88, west: -5.23, north: 40.92, east: -5.18 },
+  'Alba de Tormes': { south: 40.80, west: -5.53, north: 40.83, east: -5.48 },
+  'Guijuelo': { south: 40.54, west: -5.68, north: 40.57, east: -5.64 },
+  'Villamayor': { south: 40.98, west: -5.62, north: 41.01, east: -5.58 },
+};
+
+const CIUDADES_SALAMANCA = Object.keys(CIUDADES_BBOX);
 
 export default function BuscarNegocios() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searching, setSearching] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
-  const [results, setResults] = useState<OSMResult[]>([]);
+  const [results, setResults] = useState<BusinessResult[]>([]);
   const [savedCount, setSavedCount] = useState(0);
   const [categoria, setCategoria] = useState('all');
   const [ciudad, setCiudad] = useState('Salamanca');
@@ -116,38 +148,137 @@ export default function BuscarNegocios() {
     setSavedCount(0);
 
     try {
-      // Build search query - category is now optional
-      const categorySearch = categoria !== 'all' ? categoria : '';
-      const searchTerms = [query, categorySearch, ciudad, 'Salamanca', 'España'].filter(Boolean);
-      const searchQuery = searchTerms.join(' ');
-      
-      const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-        searchQuery
-      )}&format=json&addressdetails=1&extratags=1&limit=50`;
+      const bbox = CIUDADES_BBOX[ciudad];
+      if (!bbox) {
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Ciudad no soportada',
+        });
+        setSearching(false);
+        return;
+      }
 
-      const response = await fetch(url, {
+      // Build Overpass query
+      const categoriaObj = CATEGORIAS.find(c => c.value === categoria);
+      let categoryFilter = categoriaObj?.query || '';
+      
+      // If searching all categories, search for common business types
+      if (categoria === 'all') {
+        categoryFilter = '["name"]["amenity"]';
+      }
+
+      // Build the Overpass QL query
+      const bboxStr = `${bbox.south},${bbox.west},${bbox.north},${bbox.east}`;
+      
+      let overpassQuery: string;
+      
+      if (query.trim()) {
+        // If user entered a search term, search by name
+        overpassQuery = `
+          [out:json][timeout:30];
+          (
+            node["name"~"${query}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
+            way["name"~"${query}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
+          );
+          out center tags;
+        `;
+      } else if (categoria !== 'all') {
+        // Search by category only
+        overpassQuery = `
+          [out:json][timeout:30];
+          (
+            node${categoryFilter}["name"](${bboxStr});
+            way${categoryFilter}["name"](${bboxStr});
+          );
+          out center tags;
+        `;
+      } else {
+        // Search all businesses with names (restaurants, bars, cafes, shops, etc.)
+        overpassQuery = `
+          [out:json][timeout:30];
+          (
+            node["amenity"~"restaurant|bar|cafe|pub|fast_food"]["name"](${bboxStr});
+            node["shop"]["name"](${bboxStr});
+            node["tourism"~"hotel|guest_house|hostel"]["name"](${bboxStr});
+            node["leisure"="fitness_centre"]["name"](${bboxStr});
+            way["amenity"~"restaurant|bar|cafe|pub|fast_food"]["name"](${bboxStr});
+            way["shop"]["name"](${bboxStr});
+            way["tourism"~"hotel|guest_house|hostel"]["name"](${bboxStr});
+          );
+          out center tags;
+        `;
+      }
+
+      console.log('Overpass query:', overpassQuery);
+
+      const response = await fetch('https://overpass-api.de/api/interpreter', {
+        method: 'POST',
         headers: {
-          'User-Agent': 'ProspectAV/1.0',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
+        body: `data=${encodeURIComponent(overpassQuery)}`,
       });
 
-      if (!response.ok) throw new Error('Error en la búsqueda');
+      if (!response.ok) {
+        throw new Error(`Overpass API error: ${response.status}`);
+      }
 
-      const data: OSMResult[] = await response.json();
-      
-      // Filter results in Salamanca province
-      const filtered = data.filter(
-        (r) =>
-          r.name && // Must have a name
-          (r.address?.state?.toLowerCase().includes('salamanca') ||
-           r.address?.city?.toLowerCase().includes('salamanca') ||
-           r.display_name.toLowerCase().includes('salamanca'))
-      );
+      const data = await response.json();
+      const elements: OverpassElement[] = data.elements || [];
 
-      if (filtered.length === 0) {
+      console.log('Found elements:', elements.length);
+
+      // Transform to our format
+      const businesses: BusinessResult[] = elements
+        .filter(el => el.tags?.name) // Must have a name
+        .map(el => {
+          const tags = el.tags!;
+          const lat = el.lat || el.center?.lat || 0;
+          const lon = el.lon || el.center?.lon || 0;
+          
+          // Determine category
+          const tipo = tags.amenity || tags.shop || tags.tourism || tags.leisure || tags.office || tags.craft || 'negocio';
+          
+          // Build address
+          const direccion = [tags['addr:street'], tags['addr:housenumber']]
+            .filter(Boolean)
+            .join(' ') || `${lat.toFixed(4)}, ${lon.toFixed(4)}`;
+
+          // Contact info
+          const web = tags.website || tags['contact:website'] || null;
+          const telefono = tags.phone || tags['contact:phone'] || null;
+          const email = tags.email || tags['contact:email'] || null;
+
+          // Social media
+          const redesSociales = {
+            instagram: tags['contact:instagram'] || null,
+            facebook: tags['contact:facebook'] || null,
+            twitter: tags['contact:twitter'] || null,
+            linkedin: tags['contact:linkedin'] || null,
+          };
+          const tieneRedes = Object.values(redesSociales).some(Boolean);
+
+          return {
+            id: el.id,
+            nombre: tags.name!,
+            categoria: translateCategory(tipo),
+            tipo,
+            direccion,
+            ciudad: tags['addr:city'] || ciudad,
+            lat,
+            lon,
+            web,
+            telefono,
+            email,
+            redesSociales: tieneRedes ? redesSociales : null,
+          };
+        });
+
+      if (businesses.length === 0) {
         toast({
           title: 'Sin resultados',
-          description: 'No se encontraron negocios. Prueba con otros términos.',
+          description: 'No se encontraron negocios. Prueba con otra categoría o ciudad.',
         });
         setSearching(false);
         return;
@@ -157,11 +288,11 @@ export default function BuscarNegocios() {
       const autoSave = settings?.auto_save_leads ?? true;
       
       if (autoSave && user) {
-        await guardarTodosNegocios(filtered);
+        await guardarTodosNegocios(businesses);
       } else {
-        setResults(filtered);
+        setResults(businesses);
         toast({
-          title: `${filtered.length} resultados encontrados`,
+          title: `${businesses.length} negocios encontrados`,
           description: 'Revisa los negocios antes de guardarlos',
         });
       }
@@ -177,43 +308,48 @@ export default function BuscarNegocios() {
     }
   };
 
-  const guardarTodosNegocios = async (osmResults: OSMResult[]) => {
+  const translateCategory = (tipo: string): string => {
+    const translations: Record<string, string> = {
+      restaurant: 'Restaurante',
+      bar: 'Bar',
+      cafe: 'Cafetería',
+      pub: 'Pub',
+      fast_food: 'Comida Rápida',
+      hotel: 'Hotel',
+      guest_house: 'Casa Rural',
+      hostel: 'Hostal',
+      shop: 'Comercio',
+      supermarket: 'Supermercado',
+      bakery: 'Panadería',
+      butcher: 'Carnicería',
+      clothes: 'Ropa',
+      hairdresser: 'Peluquería',
+      beauty: 'Estética',
+      fitness_centre: 'Gimnasio',
+      clinic: 'Clínica',
+      doctors: 'Médico',
+      dentist: 'Dentista',
+      pharmacy: 'Farmacia',
+      bank: 'Banco',
+      winery: 'Bodega',
+    };
+    return translations[tipo] || tipo.charAt(0).toUpperCase() + tipo.slice(1);
+  };
+
+  const guardarTodosNegocios = async (businessResults: BusinessResult[]) => {
     if (!user) return;
     setSavingAll(true);
     let saved = 0;
     let duplicates = 0;
 
-    for (const result of osmResults) {
-      const nombre = result.name || result.display_name.split(',')[0];
-      const direccion = [
-        result.address?.road,
-        result.address?.house_number,
-      ]
-        .filter(Boolean)
-        .join(' ') || result.display_name.split(',').slice(0, 2).join(', ');
-      
-      const ciudadNegocio =
-        result.address?.city ||
-        result.address?.town ||
-        result.address?.village ||
-        result.address?.municipality ||
-        ciudad;
+    for (const biz of businessResults) {
+      const tieneWeb = !!biz.web;
+      const tieneRedes = !!biz.redesSociales;
 
-      const tieneWeb = !!result.extratags?.website;
-      const telefono = result.extratags?.phone || result.extratags?.['contact:phone'] || null;
-      const email = result.extratags?.email || result.extratags?.['contact:email'] || null;
-      
-      const redesSociales = {
-        instagram: result.extratags?.['contact:instagram'] || null,
-        facebook: result.extratags?.['contact:facebook'] || null,
-        twitter: result.extratags?.['contact:twitter'] || null,
-        linkedin: result.extratags?.['contact:linkedin'] || null,
-      };
-      const tieneRedes = Object.values(redesSociales).some(Boolean);
-
-      // Estimate size based on type
-      const tamanoEstimado: TamanoNegocio = result.type === 'hotel' ? 'grande' : 'pequeno';
-      const categoriaFinal = (categoria !== 'all' ? categoria : '') || result.type || 'Comercio';
+      // Estimate size (hotels tend to be larger)
+      const tamanoEstimado: TamanoNegocio = 
+        biz.tipo === 'hotel' ? 'grande' : 
+        biz.tipo === 'supermarket' ? 'mediano' : 'pequeno';
 
       const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedes);
       const potencialScore = calcularPotencialScore({
@@ -221,7 +357,7 @@ export default function BuscarNegocios() {
         tieneWeb,
         webPobre: false,
         redesSocialesAbandonadas: !tieneRedes,
-        tipoNegocio: categoriaFinal,
+        tipoNegocio: biz.categoria,
       });
 
       try {
@@ -229,8 +365,8 @@ export default function BuscarNegocios() {
         const { data: existing } = await supabase
           .from('businesses')
           .select('id')
-          .eq('nombre', nombre)
-          .eq('ciudad', ciudadNegocio)
+          .eq('nombre', biz.nombre)
+          .eq('ciudad', biz.ciudad)
           .maybeSingle();
 
         let businessId: string;
@@ -243,16 +379,16 @@ export default function BuscarNegocios() {
           const { data: newBusiness, error: businessError } = await supabase
             .from('businesses')
             .insert({
-              nombre,
-              categoria: categoriaFinal,
-              direccion,
-              ciudad: ciudadNegocio,
+              nombre: biz.nombre,
+              categoria: biz.categoria,
+              direccion: biz.direccion,
+              ciudad: biz.ciudad,
               provincia: 'Salamanca',
               fuente_datos: 'OpenStreetMap',
-              web: result.extratags?.website || null,
-              telefono,
-              email,
-              redes_sociales: tieneRedes ? redesSociales : null,
+              web: biz.web,
+              telefono: biz.telefono,
+              email: biz.email,
+              redes_sociales: biz.redesSociales,
               tamano_estimado: tamanoEstimado,
               presencia_digital_score: presenciaScore,
               potencial_score: potencialScore,
@@ -315,14 +451,14 @@ export default function BuscarNegocios() {
             Buscar Negocios
           </CardTitle>
           <CardDescription>
-            Busca negocios en Salamanca y provincia usando OpenStreetMap. 
+            Busca negocios reales en Salamanca usando datos de OpenStreetMap.
             Los resultados se guardan automáticamente como negocios y leads.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
             <div className="space-y-2">
-              <Label>Categoría (opcional)</Label>
+              <Label>Categoría</Label>
               <Select value={categoria} onValueChange={setCategoria}>
                 <SelectTrigger>
                   <SelectValue placeholder="Todas las categorías" />
@@ -354,9 +490,9 @@ export default function BuscarNegocios() {
             </div>
 
             <div className="space-y-2">
-              <Label>Búsqueda libre</Label>
+              <Label>Buscar por nombre</Label>
               <Input
-                placeholder="Nombre, tipo..."
+                placeholder="Nombre del negocio..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && buscarNegocios()}
@@ -381,7 +517,7 @@ export default function BuscarNegocios() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Los datos provienen de OpenStreetMap. El scoring se calcula automáticamente.
+          Los datos provienen de OpenStreetMap (Overpass API). El scoring se calcula automáticamente.
           {settings?.auto_save_leads !== false && ' Los resultados se guardan automáticamente como negocios y leads.'}
         </AlertDescription>
       </Alert>
@@ -403,41 +539,33 @@ export default function BuscarNegocios() {
             </Button>
           </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {results.map((result) => {
-              const nombre = result.name || result.display_name.split(',')[0];
-              const tieneWeb = !!result.extratags?.website;
-              const telefono = result.extratags?.phone || result.extratags?.['contact:phone'];
-              const email = result.extratags?.email || result.extratags?.['contact:email'];
+            {results.map((biz) => {
+              const tieneWeb = !!biz.web;
               const score = calcularPotencialScore({
                 tamanoEstimado: 'pequeno',
                 tieneWeb,
                 webPobre: false,
-                redesSocialesAbandonadas: true,
-                tipoNegocio: categoria !== 'all' ? categoria : result.type,
+                redesSocialesAbandonadas: !biz.redesSociales,
+                tipoNegocio: biz.categoria,
               });
 
               return (
                 <Card
-                  key={result.place_id}
+                  key={biz.id}
                   className="shadow-card hover:shadow-card-hover transition-shadow"
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <h3 className="truncate font-semibold">{nombre}</h3>
+                        <h3 className="truncate font-semibold">{biz.nombre}</h3>
                         <p className="mt-1 flex items-center gap-1 text-sm text-muted-foreground">
                           <MapPin className="h-3.5 w-3.5" />
-                          <span className="truncate">
-                            {result.address?.city ||
-                              result.address?.town ||
-                              result.address?.village ||
-                              'Salamanca'}
-                          </span>
+                          <span className="truncate">{biz.ciudad}</span>
                         </p>
                         <div className="mt-2 flex flex-wrap gap-2">
                           <span className="inline-flex items-center rounded-md bg-secondary px-2 py-1 text-xs">
                             <Building2 className="mr-1 h-3 w-3" />
-                            {result.type}
+                            {biz.categoria}
                           </span>
                           {tieneWeb && (
                             <span className="inline-flex items-center rounded-md bg-success/10 text-success px-2 py-1 text-xs">
@@ -445,13 +573,13 @@ export default function BuscarNegocios() {
                               Web
                             </span>
                           )}
-                          {telefono && (
+                          {biz.telefono && (
                             <span className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs">
                               <Phone className="mr-1 h-3 w-3" />
                               Tel
                             </span>
                           )}
-                          {email && (
+                          {biz.email && (
                             <span className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs">
                               <Mail className="mr-1 h-3 w-3" />
                               Email
@@ -488,7 +616,7 @@ export default function BuscarNegocios() {
           <Building2 className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium">Busca negocios</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Escribe un término de búsqueda o selecciona una ciudad para empezar
+            Selecciona una categoría y ciudad para encontrar negocios reales
           </p>
         </div>
       )}
