@@ -7,6 +7,25 @@ export interface ScoringInput {
   webPobre: boolean;
   redesSocialesAbandonadas: boolean;
   tipoNegocio: string;
+  // Contact info for penalty calculation
+  tieneTelefono?: boolean;
+  tieneEmail?: boolean;
+  tieneRedesSociales?: boolean;
+}
+
+// Count total contact methods
+export function countContactMethods(input: {
+  tieneWeb?: boolean;
+  tieneTelefono?: boolean;
+  tieneEmail?: boolean;
+  tieneRedesSociales?: boolean;
+}): number {
+  let count = 0;
+  if (input.tieneWeb) count++;
+  if (input.tieneTelefono) count++;
+  if (input.tieneEmail) count++;
+  if (input.tieneRedesSociales) count++;
+  return count;
 }
 
 // Categorías con alto potencial audiovisual
@@ -69,8 +88,26 @@ export function calcularPotencialScore(input: ScoringInput): number {
     score += 5;
   }
 
-  // Limitar a 100
-  return Math.min(score, 100);
+  // Factor 4: PENALIZACIÓN por falta de contactos
+  // Un negocio sin suficientes métodos de contacto tiene menor valor práctico
+  const contactCount = countContactMethods({
+    tieneWeb: input.tieneWeb,
+    tieneTelefono: input.tieneTelefono,
+    tieneEmail: input.tieneEmail,
+    tieneRedesSociales: input.tieneRedesSociales,
+  });
+
+  if (contactCount === 0) {
+    // Sin ningún contacto: penalización severa (-40 puntos)
+    score -= 40;
+  } else if (contactCount === 1) {
+    // Solo 1 método de contacto: penalización moderada (-20 puntos)
+    score -= 20;
+  }
+  // 2+ métodos: sin penalización
+
+  // Limitar entre 0 y 100
+  return Math.max(0, Math.min(score, 100));
 }
 
 export function calcularPresenciaDigitalScore(tieneWeb: boolean, webPobre: boolean, redesAbandonadas: boolean): number {

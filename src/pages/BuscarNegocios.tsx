@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, MapPin, Loader2, Building2, Globe, AlertCircle, Phone, Mail } from 'lucide-react';
+import { Search, MapPin, Loader2, Building2, Globe, AlertCircle, Phone, Mail, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,6 +18,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { calcularPotencialScore, calcularPresenciaDigitalScore } from '@/lib/scoring';
 import type { TamanoNegocio, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Progress } from '@/components/ui/progress';
+import { enrichContact, countContactMethods, type ContactInfo } from '@/lib/api/firecrawl';
 
 interface OverpassElement {
   id: number;
@@ -128,8 +130,11 @@ export default function BuscarNegocios() {
   const { toast } = useToast();
   const [searching, setSearching] = useState(false);
   const [savingAll, setSavingAll] = useState(false);
+  const [enrichingContacts, setEnrichingContacts] = useState(false);
+  const [enrichProgress, setEnrichProgress] = useState(0);
   const [results, setResults] = useState<BusinessResult[]>([]);
   const [savedCount, setSavedCount] = useState(0);
+  const [enrichedCount, setEnrichedCount] = useState(0);
   const [categoria, setCategoria] = useState('all');
   const [ciudad, setCiudad] = useState('Salamanca');
   const [query, setQuery] = useState('');
@@ -357,25 +362,70 @@ export default function BuscarNegocios() {
   const guardarTodosNegocios = async (businessResults: BusinessResult[]) => {
     if (!user) return;
     setSavingAll(true);
+    setEnrichingContacts(true);
+    setEnrichProgress(0);
+    setEnrichedCount(0);
     let saved = 0;
     let duplicates = 0;
+    let enriched = 0;
 
-    for (const biz of businessResults) {
-      const tieneWeb = !!biz.web;
-      const tieneRedes = !!biz.redesSociales;
+    const total = businessResults.length;
+
+    for (let i = 0; i < businessResults.length; i++) {
+      const biz = businessResults[i];
+      
+      // Update progress
+      setEnrichProgress(Math.round(((i + 1) / total) * 100));
+
+      // Build initial contact info
+      let contactInfo: ContactInfo = {
+        web: biz.web,
+        telefono: biz.telefono,
+        email: biz.email,
+        redesSociales: biz.redesSociales,
+      };
+
+      // Check if we need to enrich contact info
+      const initialContactCount = countContactMethods(contactInfo);
+      
+      if (initialContactCount < 2) {
+        console.log(`${biz.nombre}: Only ${initialContactCount} contact methods, enriching...`);
+        
+        try {
+          const enrichResult = await enrichContact(biz.nombre, biz.ciudad, contactInfo);
+          
+          if (enrichResult.success && enrichResult.enriched) {
+            contactInfo = enrichResult.contact;
+            enriched++;
+            console.log(`${biz.nombre}: Enriched to ${enrichResult.contactCount} contact methods`);
+          }
+        } catch (error) {
+          console.error(`Error enriching ${biz.nombre}:`, error);
+        }
+      }
+
+      // Recalculate contact counts after enrichment
+      const tieneWeb = !!contactInfo.web;
+      const tieneTelefono = !!contactInfo.telefono;
+      const tieneEmail = !!contactInfo.email;
+      const tieneRedesSociales = !!(contactInfo.redesSociales && 
+        Object.values(contactInfo.redesSociales).some(Boolean));
 
       // Estimate size (hotels tend to be larger)
       const tamanoEstimado: TamanoNegocio = 
         biz.tipo === 'hotel' ? 'grande' : 
         biz.tipo === 'supermarket' ? 'mediano' : 'pequeno';
 
-      const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedes);
+      const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedesSociales);
       const potencialScore = calcularPotencialScore({
         tamanoEstimado,
         tieneWeb,
         webPobre: false,
-        redesSocialesAbandonadas: !tieneRedes,
+        redesSocialesAbandonadas: !tieneRedesSociales,
         tipoNegocio: biz.categoria,
+        tieneTelefono,
+        tieneEmail,
+        tieneRedesSociales,
       });
 
       try {
@@ -393,7 +443,7 @@ export default function BuscarNegocios() {
           businessId = existing.id;
           duplicates++;
         } else {
-          // Insert business
+          // Insert business with enriched contact info
           const { data: newBusiness, error: businessError } = await supabase
             .from('businesses')
             .insert({
@@ -403,10 +453,10 @@ export default function BuscarNegocios() {
               ciudad: biz.ciudad,
               provincia: 'Salamanca',
               fuente_datos: 'OpenStreetMap',
-              web: biz.web,
-              telefono: biz.telefono,
-              email: biz.email,
-              redes_sociales: biz.redesSociales,
+              web: contactInfo.web,
+              telefono: contactInfo.telefono,
+              email: contactInfo.email,
+              redes_sociales: contactInfo.redesSociales,
               tamano_estimado: tamanoEstimado,
               presencia_digital_score: presenciaScore,
               potencial_score: potencialScore,
@@ -444,12 +494,14 @@ export default function BuscarNegocios() {
       }
     }
 
+    setEnrichedCount(enriched);
     setSavedCount(saved);
     setSavingAll(false);
+    setEnrichingContacts(false);
 
     toast({
       title: '¡Búsqueda completada!',
-      description: `${saved} nuevos negocios guardados, ${duplicates} duplicados ignorados`,
+      description: `${saved} nuevos negocios guardados, ${enriched} enriquecidos con contactos, ${duplicates} duplicados ignorados`,
     });
   };
 
@@ -518,16 +570,30 @@ export default function BuscarNegocios() {
             </div>
 
             <div className="flex items-end">
-              <Button onClick={buscarNegocios} disabled={searching || savingAll} className="w-full">
-                {searching || savingAll ? (
+              <Button onClick={buscarNegocios} disabled={searching || savingAll || enrichingContacts} className="w-full">
+                {searching || savingAll || enrichingContacts ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Search className="mr-2 h-4 w-4" />
                 )}
-                {savingAll ? 'Guardando...' : 'Buscar'}
+                {enrichingContacts ? 'Enriqueciendo...' : savingAll ? 'Guardando...' : 'Buscar'}
               </Button>
             </div>
           </div>
+
+          {/* Progress bar for enrichment */}
+          {enrichingContacts && (
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <RefreshCw className="h-4 w-4 animate-spin" />
+                <span>Buscando información de contacto adicional...</span>
+              </div>
+              <Progress value={enrichProgress} className="h-2" />
+              <p className="text-xs text-muted-foreground">
+                {enrichProgress}% completado - Buscando web, teléfono, email y redes sociales
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -535,8 +601,13 @@ export default function BuscarNegocios() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Los datos provienen de OpenStreetMap (Overpass API). El scoring se calcula automáticamente.
+          <strong>Búsqueda inteligente:</strong> Los datos provienen de OpenStreetMap y se enriquecen 
+          automáticamente buscando información de contacto adicional (web, teléfono, email, redes sociales).
           {settings?.auto_save_leads !== false && ' Los resultados se guardan automáticamente como negocios y leads.'}
+          <br />
+          <span className="text-xs">
+            ⚠️ Los negocios con menos de 2 métodos de contacto reciben una penalización en el score.
+          </span>
         </AlertDescription>
       </Alert>
 
@@ -622,6 +693,12 @@ export default function BuscarNegocios() {
             <Building2 className="h-6 w-6 text-success" />
           </div>
           <h3 className="mt-4 text-lg font-medium">¡{savedCount} negocios guardados!</h3>
+          {enrichedCount > 0 && (
+            <p className="mt-1 text-sm text-info flex items-center gap-1">
+              <RefreshCw className="h-3.5 w-3.5" />
+              {enrichedCount} negocios enriquecidos con contactos adicionales
+            </p>
+          )}
           <p className="mt-1 text-sm text-muted-foreground">
             Ve a Negocios o Leads para verlos ordenados por scoring
           </p>
