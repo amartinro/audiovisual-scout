@@ -26,7 +26,7 @@ interface LeadWithBusiness extends Lead {
   business: Business;
 }
 
-export default function Emails() {
+export default function Comunicaciones() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
@@ -391,14 +391,14 @@ export default function Emails() {
     <div className="space-y-6">
       <ProgressDialog 
         open={progressOpen} 
-        title="Generando Email" 
+        title="Generando Mensaje" 
         steps={progressSteps} 
       />
 
       <Alert>
-        <Mail className="h-4 w-4" />
+        <MessageCircle className="h-4 w-4" />
         <AlertDescription>
-          Genera emails personalizados para tus leads. El primer email analiza el negocio automáticamente.
+          Genera mensajes personalizados para tus leads (Email o WhatsApp). El primer mensaje analiza el lead automáticamente.
         </AlertDescription>
       </Alert>
 
@@ -407,7 +407,7 @@ export default function Emails() {
         <Card className="shadow-card">
           <CardHeader>
             <CardTitle>Seleccionar Lead</CardTitle>
-            <CardDescription>Elige el lead para el que generar el email</CardDescription>
+            <CardDescription>Elige el lead para generar el mensaje</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>

@@ -791,10 +791,10 @@ export default function Leads() {
                   </AlertDialogContent>
                 </AlertDialog>
 
-                <Link to={`/emails?lead=${selectedLead.id}`}>
+                <Link to={`/comunicaciones?lead=${selectedLead.id}`}>
                   <Button>
                     <Mail className="mr-2 h-4 w-4" />
-                    Generar Email
+                    Generar Mensaje
                   </Button>
                 </Link>
               </DialogFooter>

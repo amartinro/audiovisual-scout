@@ -481,7 +481,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       if (businesses.length === 0) {
         updateState({ 
           isSearching: false, 
-          error: 'No se encontraron negocios' 
+          error: 'No se encontraron leads' 
         });
         isRunningRef.current = false;
         return;

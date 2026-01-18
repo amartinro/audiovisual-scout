@@ -176,7 +176,7 @@ export default function Configuracion() {
 
       toast({ 
         title: '¡Datos eliminados!',
-        description: 'Todos los negocios, leads, emails y configuración han sido borrados.'
+        description: 'Todos los leads, mensajes y configuración han sido borrados.'
       });
       
       setDeleteDialogOpen(false);
@@ -205,10 +205,10 @@ export default function Configuracion() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5" />
-            Prompt de Generación de Email
+            Prompt de Generación de Mensajes
           </CardTitle>
           <CardDescription>
-            Personaliza el prompt que se usa para generar los emails comerciales.
+            Personaliza el prompt que se usa para generar los mensajes comerciales (Email/WhatsApp).
             Usa las variables: {'{nombre}'}, {'{categoria}'}, {'{ciudad}'}, {'{carencias_digitales}'}
           </CardDescription>
         </CardHeader>
@@ -231,7 +231,7 @@ export default function Configuracion() {
         <CardHeader>
           <CardTitle>Opciones de Búsqueda</CardTitle>
           <CardDescription>
-            Configura el comportamiento de la búsqueda de negocios
+            Configura el comportamiento de la búsqueda de leads
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -239,7 +239,7 @@ export default function Configuracion() {
             <div>
               <Label htmlFor="auto-save">Guardar automáticamente como Lead</Label>
               <p className="text-sm text-muted-foreground">
-                Al buscar, los negocios se guardarán automáticamente como leads
+                Al buscar, los leads se guardarán automáticamente
               </p>
             </div>
             <Switch
@@ -282,7 +282,7 @@ export default function Configuracion() {
             <div>
               <p className="font-medium">Borrar todos los datos</p>
               <p className="text-sm text-muted-foreground">
-                Elimina todos los negocios, leads, emails y configuración
+                Elimina todos los leads, mensajes y configuración
               </p>
             </div>
             <Button 
@@ -315,7 +315,7 @@ export default function Configuracion() {
               Confirmar eliminación
             </DialogTitle>
             <DialogDescription>
-              Esta acción es <strong>irreversible</strong>. Se eliminarán permanentemente todos los negocios, leads, emails y tu configuración.
+              Esta acción es <strong>irreversible</strong>. Se eliminarán permanentemente todos los leads, mensajes y tu configuración.
             </DialogDescription>
           </DialogHeader>
           

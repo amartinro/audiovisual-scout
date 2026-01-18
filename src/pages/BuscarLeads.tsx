@@ -79,7 +79,7 @@ export default function BuscarLeads() {
             Buscar Leads
           </CardTitle>
           <CardDescription>
-            Busca negocios reales en Salamanca usando datos de OpenStreetMap.
+            Busca leads reales en Salamanca usando datos de OpenStreetMap.
             Los resultados se guardan automáticamente y se enriquecen con información de contacto.
           </CardDescription>
         </CardHeader>
@@ -221,7 +221,7 @@ export default function BuscarLeads() {
             {state.isSearching && state.totalFound === 0 && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Loader2 className="h-4 w-4 animate-spin" />
-                <span>Buscando negocios en OpenStreetMap...</span>
+                <span>Buscando leads en OpenStreetMap...</span>
               </div>
             )}
 
@@ -272,7 +272,7 @@ export default function BuscarLeads() {
           <Building2 className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium">Busca leads</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Selecciona una categoría y ciudad para encontrar negocios reales
+            Selecciona una categoría y ciudad para encontrar leads
           </p>
         </div>
       )}

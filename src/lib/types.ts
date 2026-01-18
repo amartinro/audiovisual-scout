@@ -62,7 +62,6 @@ export interface Email {
 }
 
 export interface DashboardStats {
-  totalBusinesses: number;
   totalLeads: number;
   leadsPorEstado: Record<EstadoLead, number>;
   promedioScore: number;
