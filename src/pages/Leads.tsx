@@ -23,6 +23,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -53,7 +55,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { Label } from '@/components/ui/label';
 import { Link } from 'react-router-dom';
 
 interface LeadWithBusiness extends Lead {
@@ -72,6 +73,7 @@ export default function Leads() {
   const [filterEstado, setFilterEstado] = useState<string>('all');
   const [filterCategoria, setFilterCategoria] = useState<string>('all');
   const [filterScore, setFilterScore] = useState<string>('all');
+  const [filterContacto, setFilterContacto] = useState<string[]>([]);
   const [selectedLead, setSelectedLead] = useState<LeadWithBusiness | null>(null);
   const [editingNotas, setEditingNotas] = useState(false);
   const [notasTemp, setNotasTemp] = useState('');
@@ -93,7 +95,7 @@ export default function Leads() {
 
   useEffect(() => {
     filterLeads();
-  }, [leads, search, filterEstado, filterCategoria, filterScore]);
+  }, [leads, search, filterEstado, filterCategoria, filterScore, filterContacto]);
 
   const fetchLeads = async () => {
     setLoading(true);
@@ -160,7 +162,30 @@ export default function Leads() {
       }
     }
 
+    // Filter by contact methods
+    if (filterContacto.length > 0) {
+      filtered = filtered.filter((l) => {
+        const redes = parseRedesSociales(l.business?.redes_sociales);
+        return filterContacto.every((tipo) => {
+          switch (tipo) {
+            case 'email': return !!l.business?.email;
+            case 'telefono': return !!l.business?.telefono;
+            case 'web': return !!l.business?.web;
+            case 'instagram': return !!redes.instagram;
+            case 'facebook': return !!redes.facebook;
+            default: return true;
+          }
+        });
+      });
+    }
+
     setFilteredLeads(filtered);
+  };
+
+  const toggleContactFilter = (tipo: string) => {
+    setFilterContacto(prev => 
+      prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]
+    );
   };
 
   const actualizarEstado = async (leadId: string, nuevoEstado: EstadoLead) => {
@@ -356,59 +381,118 @@ export default function Leads() {
   return (
     <div className="space-y-6">
       {/* Filters & Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex flex-wrap gap-3">
-          <Input
-            placeholder="Buscar por nombre..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="max-w-xs"
-          />
-          <Select value={filterEstado} onValueChange={setFilterEstado}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Estado" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos estados</SelectItem>
-              {ESTADOS.map((e) => (
-                <SelectItem key={e} value={e} className="capitalize">
-                  {e}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Categoría" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas categorías</SelectItem>
-              {categorias.map((cat) => (
-                <SelectItem key={cat} value={cat}>
-                  {cat}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={filterScore} onValueChange={setFilterScore}>
-            <SelectTrigger className="w-36">
-              <SelectValue placeholder="Score" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todos scores</SelectItem>
-              <SelectItem value="high">Alto (≥70)</SelectItem>
-              <SelectItem value="medium">Medio (40-69)</SelectItem>
-              <SelectItem value="low">Bajo (&lt;40)</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-3">
+            <Input
+              placeholder="Buscar por nombre..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-xs"
+            />
+            <Select value={filterEstado} onValueChange={setFilterEstado}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos estados</SelectItem>
+                {ESTADOS.map((e) => (
+                  <SelectItem key={e} value={e} className="capitalize">
+                    {e}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="Categoría" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todas categorías</SelectItem>
+                {categorias.map((cat) => (
+                  <SelectItem key={cat} value={cat}>
+                    {cat}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={filterScore} onValueChange={setFilterScore}>
+              <SelectTrigger className="w-36">
+                <SelectValue placeholder="Score" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos scores</SelectItem>
+                <SelectItem value="high">Alto (≥70)</SelectItem>
+                <SelectItem value="medium">Medio (40-69)</SelectItem>
+                <SelectItem value="low">Bajo (&lt;40)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <Button variant="outline" onClick={exportarCSV} disabled={filteredLeads.length === 0}>
+            <Download className="mr-2 h-4 w-4" />
+            Exportar CSV
+          </Button>
         </div>
-        <Button variant="outline" onClick={exportarCSV} disabled={filteredLeads.length === 0}>
-          <Download className="mr-2 h-4 w-4" />
-          Exportar CSV
-        </Button>
+
+        {/* Contact Filters */}
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm text-muted-foreground">Filtrar por contacto:</span>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lead-filter-email" 
+                checked={filterContacto.includes('email')}
+                onCheckedChange={() => toggleContactFilter('email')}
+              />
+              <Label htmlFor="lead-filter-email" className="text-sm cursor-pointer flex items-center gap-1">
+                <Mail className="h-3.5 w-3.5" /> Email
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lead-filter-telefono" 
+                checked={filterContacto.includes('telefono')}
+                onCheckedChange={() => toggleContactFilter('telefono')}
+              />
+              <Label htmlFor="lead-filter-telefono" className="text-sm cursor-pointer flex items-center gap-1">
+                <Phone className="h-3.5 w-3.5" /> Teléfono
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lead-filter-web" 
+                checked={filterContacto.includes('web')}
+                onCheckedChange={() => toggleContactFilter('web')}
+              />
+              <Label htmlFor="lead-filter-web" className="text-sm cursor-pointer flex items-center gap-1">
+                <Globe className="h-3.5 w-3.5" /> Web
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lead-filter-instagram" 
+                checked={filterContacto.includes('instagram')}
+                onCheckedChange={() => toggleContactFilter('instagram')}
+              />
+              <Label htmlFor="lead-filter-instagram" className="text-sm cursor-pointer flex items-center gap-1">
+                <Instagram className="h-3.5 w-3.5" /> Instagram
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="lead-filter-facebook" 
+                checked={filterContacto.includes('facebook')}
+                onCheckedChange={() => toggleContactFilter('facebook')}
+              />
+              <Label htmlFor="lead-filter-facebook" className="text-sm cursor-pointer flex items-center gap-1">
+                <Facebook className="h-3.5 w-3.5" /> Facebook
+              </Label>
+            </div>
+          </div>
+        </div>
       </div>
 
-{/* Results count */}
+      {/* Results count */}
       <p className="text-sm text-muted-foreground">
         {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''} (ordenados por score)
       </p>

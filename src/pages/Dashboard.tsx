@@ -6,12 +6,14 @@ import { StatsCard } from '@/components/dashboard/StatsCard';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { EstadoBadge } from '@/components/ui/estado-badge';
+import { BusinessDetailDialog } from '@/components/business/BusinessDetailDialog';
 import type { Business, Lead, DashboardStats, EstadoLead } from '@/lib/types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<DashboardStats>({
     totalBusinesses: 0,
@@ -21,6 +23,7 @@ export default function Dashboard() {
   });
   const [recentLeads, setRecentLeads] = useState<(Lead & { business: Business })[]>([]);
   const [topBusinesses, setTopBusinesses] = useState<Business[]>([]);
+  const [selectedBusiness, setSelectedBusiness] = useState<Business | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -161,7 +164,8 @@ export default function Dashboard() {
                 {recentLeads.map((lead) => (
                   <div
                     key={lead.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => navigate('/leads')}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{lead.business?.nombre}</p>
@@ -192,7 +196,8 @@ export default function Dashboard() {
                 {topBusinesses.map((business) => (
                   <div
                     key={business.id}
-                    className="flex items-center justify-between rounded-lg border p-3"
+                    className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={() => setSelectedBusiness(business)}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{business.nombre}</p>
@@ -208,6 +213,13 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Business Detail Dialog */}
+      <BusinessDetailDialog
+        business={selectedBusiness}
+        open={!!selectedBusiness}
+        onOpenChange={(open) => !open && setSelectedBusiness(null)}
+      />
     </div>
   );
 }

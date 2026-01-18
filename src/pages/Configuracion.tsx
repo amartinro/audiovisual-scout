@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Settings, Save, Loader2, RefreshCw } from 'lucide-react';
+import { Settings, Save, Loader2, RefreshCw, Trash2, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -10,6 +10,14 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import type { UserSettings } from '@/lib/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 const DEFAULT_PROMPT = `Genera un email comercial personalizado para {nombre}, un {categoria} ubicado en {ciudad}. 
 
@@ -56,6 +64,12 @@ export default function Configuracion() {
   const [emailPrompt, setEmailPrompt] = useState(DEFAULT_PROMPT);
   const [autoSaveLeads, setAutoSaveLeads] = useState(true);
   const [defaultCiudad, setDefaultCiudad] = useState('Salamanca');
+  
+  // Delete data dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -135,6 +149,47 @@ export default function Configuracion() {
     toast({ title: 'Prompt restaurado al valor por defecto' });
   };
 
+  const handleDeleteAllData = async () => {
+    if (!user?.email) return;
+    
+    setDeleteError('');
+    setDeleting(true);
+
+    try {
+      // Verify password by attempting to sign in
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: deletePassword,
+      });
+
+      if (signInError) {
+        setDeleteError('Contraseña incorrecta');
+        setDeleting(false);
+        return;
+      }
+
+      // Delete all data in order (respecting foreign keys)
+      await supabase.from('emails').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('leads').delete().eq('user_id', user.id);
+      await supabase.from('businesses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await supabase.from('user_settings').delete().eq('user_id', user.id);
+
+      toast({ 
+        title: '¡Datos eliminados!',
+        description: 'Todos los negocios, leads, emails y configuración han sido borrados.'
+      });
+      
+      setDeleteDialogOpen(false);
+      setDeletePassword('');
+      fetchSettings();
+    } catch (error) {
+      console.error('Error deleting data:', error);
+      setDeleteError('Error al eliminar los datos');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
@@ -211,6 +266,36 @@ export default function Configuracion() {
         </CardContent>
       </Card>
 
+      {/* Danger Zone */}
+      <Card className="shadow-card border-destructive/50">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-destructive">
+            <AlertTriangle className="h-5 w-5" />
+            Zona de Peligro
+          </CardTitle>
+          <CardDescription>
+            Acciones irreversibles que afectan a todos tus datos
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Borrar todos los datos</p>
+              <p className="text-sm text-muted-foreground">
+                Elimina todos los negocios, leads, emails y configuración
+              </p>
+            </div>
+            <Button 
+              variant="destructive" 
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 className="mr-2 h-4 w-4" />
+              Borrar Todo
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Save Button */}
       <Button onClick={guardarSettings} disabled={saving} className="w-full">
         {saving ? (
@@ -220,6 +305,62 @@ export default function Configuracion() {
         )}
         Guardar Configuración
       </Button>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar eliminación
+            </DialogTitle>
+            <DialogDescription>
+              Esta acción es <strong>irreversible</strong>. Se eliminarán permanentemente todos los negocios, leads, emails y tu configuración.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="delete-password">Introduce tu contraseña para confirmar</Label>
+              <Input
+                id="delete-password"
+                type="password"
+                value={deletePassword}
+                onChange={(e) => setDeletePassword(e.target.value)}
+                placeholder="Tu contraseña"
+              />
+              {deleteError && (
+                <p className="text-sm text-destructive">{deleteError}</p>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setDeletePassword('');
+                setDeleteError('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={handleDeleteAllData}
+              disabled={deleting || !deletePassword}
+            >
+              {deleting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Eliminar Todo
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

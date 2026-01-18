@@ -5,6 +5,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -37,6 +39,7 @@ export default function Negocios() {
   const [filterTamano, setFilterTamano] = useState<string>('all');
   const [filterScore, setFilterScore] = useState<string>('all');
   const [filterCategoria, setFilterCategoria] = useState<string>('all');
+  const [filterContacto, setFilterContacto] = useState<string[]>([]);
   const [savingLead, setSavingLead] = useState<string | null>(null);
 
   // Get unique categories from businesses
@@ -48,7 +51,7 @@ export default function Negocios() {
 
   useEffect(() => {
     filterBusinesses();
-  }, [businesses, search, filterTamano, filterScore, filterCategoria]);
+  }, [businesses, search, filterTamano, filterScore, filterCategoria, filterContacto]);
 
   const fetchBusinesses = async () => {
     setLoading(true);
@@ -105,8 +108,31 @@ export default function Negocios() {
       }
     }
 
+    // Filter by contact methods
+    if (filterContacto.length > 0) {
+      filtered = filtered.filter((b) => {
+        const redes = parseRedesSociales(b.redes_sociales);
+        return filterContacto.every((tipo) => {
+          switch (tipo) {
+            case 'email': return !!b.email;
+            case 'telefono': return !!b.telefono;
+            case 'web': return !!b.web;
+            case 'instagram': return !!redes.instagram;
+            case 'facebook': return !!redes.facebook;
+            default: return true;
+          }
+        });
+      });
+    }
+
     // Already sorted by score from the database query
     setFilteredBusinesses(filtered);
+  };
+
+  const toggleContactFilter = (tipo: string) => {
+    setFilterContacto(prev => 
+      prev.includes(tipo) ? prev.filter(t => t !== tipo) : [...prev, tipo]
+    );
   };
 
   const crearLead = async (business: Business) => {
@@ -191,48 +217,107 @@ export default function Negocios() {
   return (
     <div className="space-y-6">
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <Input
-          placeholder="Buscar por nombre..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-xs"
-        />
-        <Select value={filterCategoria} onValueChange={setFilterCategoria}>
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Categoría" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todas categorías</SelectItem>
-            {categorias.map((cat) => (
-              <SelectItem key={cat} value={cat}>
-                {cat}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filterTamano} onValueChange={setFilterTamano}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Tamaño" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos tamaños</SelectItem>
-            <SelectItem value="pequeno">Pequeño</SelectItem>
-            <SelectItem value="mediano">Mediano</SelectItem>
-            <SelectItem value="grande">Grande</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={filterScore} onValueChange={setFilterScore}>
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="Potencial" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Todos scores</SelectItem>
-            <SelectItem value="high">Alto (≥70)</SelectItem>
-            <SelectItem value="medium">Medio (40-69)</SelectItem>
-            <SelectItem value="low">Bajo (&lt;40)</SelectItem>
-          </SelectContent>
-        </Select>
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-3">
+          <Input
+            placeholder="Buscar por nombre..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-xs"
+          />
+          <Select value={filterCategoria} onValueChange={setFilterCategoria}>
+            <SelectTrigger className="w-40">
+              <SelectValue placeholder="Categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas categorías</SelectItem>
+              {categorias.map((cat) => (
+                <SelectItem key={cat} value={cat}>
+                  {cat}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={filterTamano} onValueChange={setFilterTamano}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Tamaño" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos tamaños</SelectItem>
+              <SelectItem value="pequeno">Pequeño</SelectItem>
+              <SelectItem value="mediano">Mediano</SelectItem>
+              <SelectItem value="grande">Grande</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={filterScore} onValueChange={setFilterScore}>
+            <SelectTrigger className="w-36">
+              <SelectValue placeholder="Potencial" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos scores</SelectItem>
+              <SelectItem value="high">Alto (≥70)</SelectItem>
+              <SelectItem value="medium">Medio (40-69)</SelectItem>
+              <SelectItem value="low">Bajo (&lt;40)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Contact Filters */}
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-sm text-muted-foreground">Filtrar por contacto:</span>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="filter-email" 
+                checked={filterContacto.includes('email')}
+                onCheckedChange={() => toggleContactFilter('email')}
+              />
+              <Label htmlFor="filter-email" className="text-sm cursor-pointer flex items-center gap-1">
+                <Mail className="h-3.5 w-3.5" /> Email
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="filter-telefono" 
+                checked={filterContacto.includes('telefono')}
+                onCheckedChange={() => toggleContactFilter('telefono')}
+              />
+              <Label htmlFor="filter-telefono" className="text-sm cursor-pointer flex items-center gap-1">
+                <Phone className="h-3.5 w-3.5" /> Teléfono
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="filter-web" 
+                checked={filterContacto.includes('web')}
+                onCheckedChange={() => toggleContactFilter('web')}
+              />
+              <Label htmlFor="filter-web" className="text-sm cursor-pointer flex items-center gap-1">
+                <Globe className="h-3.5 w-3.5" /> Web
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="filter-instagram" 
+                checked={filterContacto.includes('instagram')}
+                onCheckedChange={() => toggleContactFilter('instagram')}
+              />
+              <Label htmlFor="filter-instagram" className="text-sm cursor-pointer flex items-center gap-1">
+                <Instagram className="h-3.5 w-3.5" /> Instagram
+              </Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="filter-facebook" 
+                checked={filterContacto.includes('facebook')}
+                onCheckedChange={() => toggleContactFilter('facebook')}
+              />
+              <Label htmlFor="filter-facebook" className="text-sm cursor-pointer flex items-center gap-1">
+                <Facebook className="h-3.5 w-3.5" /> Facebook
+              </Label>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Results count */}
