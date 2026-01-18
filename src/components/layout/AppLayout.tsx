@@ -11,6 +11,7 @@ import {
   Menu,
   X,
   Camera,
+  Settings,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -26,6 +27,7 @@ const navItems = [
   { href: '/negocios', label: 'Negocios', icon: Building2 },
   { href: '/leads', label: 'Leads', icon: Users },
   { href: '/emails', label: 'Emails', icon: Mail },
+  { href: '/configuracion', label: 'Configuración', icon: Settings },
 ];
 
 export function AppLayout({ children }: AppLayoutProps) {

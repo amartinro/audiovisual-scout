@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Search, MapPin, Loader2, Plus, Building2, Globe, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, MapPin, Loader2, Building2, Globe, AlertCircle, Phone, Mail } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,8 +14,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { ScoreBadge } from '@/components/ui/score-badge';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
 import { calcularPotencialScore, calcularPresenciaDigitalScore } from '@/lib/scoring';
-import type { Business, TamanoNegocio } from '@/lib/types';
+import type { TamanoNegocio, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface OSMResult {
@@ -35,24 +36,30 @@ interface OSMResult {
   extratags?: {
     website?: string;
     phone?: string;
+    email?: string;
+    'contact:phone'?: string;
+    'contact:email'?: string;
     'contact:instagram'?: string;
     'contact:facebook'?: string;
+    'contact:twitter'?: string;
+    'contact:linkedin'?: string;
   };
 }
 
 const CATEGORIAS = [
-  'Restaurante',
-  'Hotel',
-  'Bar',
-  'Cafetería',
-  'Gimnasio',
-  'Clínica',
-  'Estética',
-  'Bodega',
-  'Eventos',
-  'Turismo',
-  'Comercio',
-  'Servicios',
+  { value: '', label: 'Todas las categorías' },
+  { value: 'restaurant', label: 'Restaurante' },
+  { value: 'hotel', label: 'Hotel' },
+  { value: 'bar', label: 'Bar' },
+  { value: 'cafe', label: 'Cafetería' },
+  { value: 'gym', label: 'Gimnasio' },
+  { value: 'clinic', label: 'Clínica' },
+  { value: 'beauty', label: 'Estética' },
+  { value: 'winery', label: 'Bodega' },
+  { value: 'events', label: 'Eventos' },
+  { value: 'tourism', label: 'Turismo' },
+  { value: 'shop', label: 'Comercio' },
+  { value: 'services', label: 'Servicios' },
 ];
 
 const CIUDADES_SALAMANCA = [
@@ -69,32 +76,53 @@ const CIUDADES_SALAMANCA = [
 ];
 
 export default function BuscarNegocios() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [searching, setSearching] = useState(false);
-  const [saving, setSaving] = useState<string | null>(null);
+  const [savingAll, setSavingAll] = useState(false);
   const [results, setResults] = useState<OSMResult[]>([]);
+  const [savedCount, setSavedCount] = useState(0);
   const [categoria, setCategoria] = useState('');
   const [ciudad, setCiudad] = useState('Salamanca');
   const [query, setQuery] = useState('');
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+
+  useEffect(() => {
+    if (user) {
+      fetchSettings();
+    }
+  }, [user]);
+
+  const fetchSettings = async () => {
+    try {
+      const { data } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (data) {
+        setSettings(data as UserSettings);
+        setCiudad(data.default_ciudad);
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error);
+    }
+  };
 
   const buscarNegocios = async () => {
-    if (!categoria && !query) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Selecciona una categoría o escribe un término de búsqueda',
-      });
-      return;
-    }
-
     setSearching(true);
     setResults([]);
+    setSavedCount(0);
 
     try {
-      const searchTerm = query || categoria;
+      // Build search query - category is now optional
+      const searchTerms = [query, categoria, ciudad, 'Salamanca', 'España'].filter(Boolean);
+      const searchQuery = searchTerms.join(' ');
+      
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
-        searchTerm
-      )}+${encodeURIComponent(ciudad)}+Salamanca+España&format=json&addressdetails=1&extratags=1&limit=20`;
+        searchQuery
+      )}&format=json&addressdetails=1&extratags=1&limit=50`;
 
       const response = await fetch(url, {
         headers: {
@@ -109,17 +137,31 @@ export default function BuscarNegocios() {
       // Filter results in Salamanca province
       const filtered = data.filter(
         (r) =>
-          r.address?.state?.toLowerCase().includes('salamanca') ||
-          r.address?.city?.toLowerCase().includes('salamanca') ||
-          r.display_name.toLowerCase().includes('salamanca')
+          r.name && // Must have a name
+          (r.address?.state?.toLowerCase().includes('salamanca') ||
+           r.address?.city?.toLowerCase().includes('salamanca') ||
+           r.display_name.toLowerCase().includes('salamanca'))
       );
-
-      setResults(filtered);
 
       if (filtered.length === 0) {
         toast({
           title: 'Sin resultados',
           description: 'No se encontraron negocios. Prueba con otros términos.',
+        });
+        setSearching(false);
+        return;
+      }
+
+      // Auto-save if enabled
+      const autoSave = settings?.auto_save_leads ?? true;
+      
+      if (autoSave && user) {
+        await guardarTodosNegocios(filtered);
+      } else {
+        setResults(filtered);
+        toast({
+          title: `${filtered.length} resultados encontrados`,
+          description: 'Revisa los negocios antes de guardarlos',
         });
       }
     } catch (error) {
@@ -134,10 +176,13 @@ export default function BuscarNegocios() {
     }
   };
 
-  const guardarNegocio = async (result: OSMResult) => {
-    setSaving(String(result.place_id));
+  const guardarTodosNegocios = async (osmResults: OSMResult[]) => {
+    if (!user) return;
+    setSavingAll(true);
+    let saved = 0;
+    let duplicates = 0;
 
-    try {
+    for (const result of osmResults) {
       const nombre = result.name || result.display_name.split(',')[0];
       const direccion = [
         result.address?.road,
@@ -154,14 +199,20 @@ export default function BuscarNegocios() {
         ciudad;
 
       const tieneWeb = !!result.extratags?.website;
+      const telefono = result.extratags?.phone || result.extratags?.['contact:phone'] || null;
+      const email = result.extratags?.email || result.extratags?.['contact:email'] || null;
+      
       const redesSociales = {
         instagram: result.extratags?.['contact:instagram'] || null,
         facebook: result.extratags?.['contact:facebook'] || null,
+        twitter: result.extratags?.['contact:twitter'] || null,
+        linkedin: result.extratags?.['contact:linkedin'] || null,
       };
       const tieneRedes = Object.values(redesSociales).some(Boolean);
 
       // Estimate size based on type
       const tamanoEstimado: TamanoNegocio = result.type === 'hotel' ? 'grande' : 'pequeno';
+      const categoriaFinal = categoria || result.type || 'Comercio';
 
       const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedes);
       const potencialScore = calcularPotencialScore({
@@ -169,51 +220,88 @@ export default function BuscarNegocios() {
         tieneWeb,
         webPobre: false,
         redesSocialesAbandonadas: !tieneRedes,
-        tipoNegocio: categoria || result.type,
+        tipoNegocio: categoriaFinal,
       });
 
-      const { error } = await supabase.from('businesses').insert({
-        nombre,
-        categoria: categoria || result.type,
-        direccion,
-        ciudad: ciudadNegocio,
-        provincia: 'Salamanca',
-        fuente_datos: 'OpenStreetMap',
-        web: result.extratags?.website || null,
-        redes_sociales: tieneRedes ? redesSociales : null,
-        tamano_estimado: tamanoEstimado,
-        presencia_digital_score: presenciaScore,
-        potencial_score: potencialScore,
-      });
+      try {
+        // Check if business already exists by name and city
+        const { data: existing } = await supabase
+          .from('businesses')
+          .select('id')
+          .eq('nombre', nombre)
+          .eq('ciudad', ciudadNegocio)
+          .maybeSingle();
 
-      if (error) {
-        if (error.code === '23505') {
-          toast({
-            variant: 'destructive',
-            title: 'Duplicado',
-            description: 'Este negocio ya existe en la base de datos',
-          });
+        let businessId: string;
+
+        if (existing) {
+          businessId = existing.id;
+          duplicates++;
         } else {
-          throw error;
+          // Insert business
+          const { data: newBusiness, error: businessError } = await supabase
+            .from('businesses')
+            .insert({
+              nombre,
+              categoria: categoriaFinal,
+              direccion,
+              ciudad: ciudadNegocio,
+              provincia: 'Salamanca',
+              fuente_datos: 'OpenStreetMap',
+              web: result.extratags?.website || null,
+              telefono,
+              email,
+              redes_sociales: tieneRedes ? redesSociales : null,
+              tamano_estimado: tamanoEstimado,
+              presencia_digital_score: presenciaScore,
+              potencial_score: potencialScore,
+            })
+            .select('id')
+            .single();
+
+          if (businessError) {
+            console.error('Error inserting business:', businessError);
+            continue;
+          }
+          businessId = newBusiness.id;
+          saved++;
         }
-      } else {
-        toast({
-          title: '¡Guardado!',
-          description: `${nombre} añadido con score ${potencialScore}`,
-        });
-        // Remove from results
-        setResults((prev) => prev.filter((r) => r.place_id !== result.place_id));
+
+        // Check if lead already exists
+        const { data: existingLead } = await supabase
+          .from('leads')
+          .select('id')
+          .eq('business_id', businessId)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!existingLead) {
+          // Create lead
+          await supabase.from('leads').insert({
+            business_id: businessId,
+            user_id: user.id,
+            estado: 'nuevo',
+            etiquetas: [],
+          });
+        }
+      } catch (error) {
+        console.error('Error saving:', error);
       }
-    } catch (error) {
-      console.error('Save error:', error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'No se pudo guardar el negocio',
-      });
-    } finally {
-      setSaving(null);
     }
+
+    setSavedCount(saved);
+    setSavingAll(false);
+
+    toast({
+      title: '¡Búsqueda completada!',
+      description: `${saved} nuevos negocios guardados, ${duplicates} duplicados ignorados`,
+    });
+  };
+
+  const guardarResultadosManual = async () => {
+    if (results.length === 0) return;
+    await guardarTodosNegocios(results);
+    setResults([]);
   };
 
   return (
@@ -226,21 +314,22 @@ export default function BuscarNegocios() {
             Buscar Negocios
           </CardTitle>
           <CardDescription>
-            Busca negocios en Salamanca y provincia usando OpenStreetMap
+            Busca negocios en Salamanca y provincia usando OpenStreetMap. 
+            Los resultados se guardan automáticamente como negocios y leads.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 md:grid-cols-4">
             <div className="space-y-2">
-              <Label>Categoría</Label>
+              <Label>Categoría (opcional)</Label>
               <Select value={categoria} onValueChange={setCategoria}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar..." />
+                  <SelectValue placeholder="Todas las categorías" />
                 </SelectTrigger>
                 <SelectContent>
                   {CATEGORIAS.map((cat) => (
-                    <SelectItem key={cat} value={cat}>
-                      {cat}
+                    <SelectItem key={cat.value} value={cat.value}>
+                      {cat.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -274,13 +363,13 @@ export default function BuscarNegocios() {
             </div>
 
             <div className="flex items-end">
-              <Button onClick={buscarNegocios} disabled={searching} className="w-full">
-                {searching ? (
+              <Button onClick={buscarNegocios} disabled={searching || savingAll} className="w-full">
+                {searching || savingAll ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <Search className="mr-2 h-4 w-4" />
                 )}
-                Buscar
+                {savingAll ? 'Guardando...' : 'Buscar'}
               </Button>
             </div>
           </div>
@@ -291,21 +380,33 @@ export default function BuscarNegocios() {
       <Alert>
         <AlertCircle className="h-4 w-4" />
         <AlertDescription>
-          Los datos provienen de OpenStreetMap. El scoring se calcula automáticamente 
-          basándose en el tamaño estimado, presencia digital y tipo de negocio.
+          Los datos provienen de OpenStreetMap. El scoring se calcula automáticamente.
+          {settings?.auto_save_leads !== false && ' Los resultados se guardan automáticamente como negocios y leads.'}
         </AlertDescription>
       </Alert>
 
-      {/* Results */}
+      {/* Results (only shown if auto-save is disabled) */}
       {results.length > 0 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">
-            Resultados ({results.length})
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">
+              Resultados ({results.length})
+            </h2>
+            <Button onClick={guardarResultadosManual} disabled={savingAll}>
+              {savingAll ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Building2 className="mr-2 h-4 w-4" />
+              )}
+              Guardar Todos
+            </Button>
+          </div>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {results.map((result) => {
               const nombre = result.name || result.display_name.split(',')[0];
               const tieneWeb = !!result.extratags?.website;
+              const telefono = result.extratags?.phone || result.extratags?.['contact:phone'];
+              const email = result.extratags?.email || result.extratags?.['contact:email'];
               const score = calcularPotencialScore({
                 tamanoEstimado: 'pequeno',
                 tieneWeb,
@@ -343,23 +444,22 @@ export default function BuscarNegocios() {
                               Web
                             </span>
                           )}
+                          {telefono && (
+                            <span className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs">
+                              <Phone className="mr-1 h-3 w-3" />
+                              Tel
+                            </span>
+                          )}
+                          {email && (
+                            <span className="inline-flex items-center rounded-md bg-info/10 text-info px-2 py-1 text-xs">
+                              <Mail className="mr-1 h-3 w-3" />
+                              Email
+                            </span>
+                          )}
                         </div>
                       </div>
                       <ScoreBadge score={score} />
                     </div>
-                    <Button
-                      className="mt-4 w-full"
-                      size="sm"
-                      onClick={() => guardarNegocio(result)}
-                      disabled={saving === String(result.place_id)}
-                    >
-                      {saving === String(result.place_id) ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Plus className="mr-2 h-4 w-4" />
-                      )}
-                      Guardar
-                    </Button>
                   </CardContent>
                 </Card>
               );
@@ -368,13 +468,26 @@ export default function BuscarNegocios() {
         </div>
       )}
 
+      {/* Saved Count */}
+      {savedCount > 0 && results.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div className="h-12 w-12 rounded-full bg-success/10 flex items-center justify-center">
+            <Building2 className="h-6 w-6 text-success" />
+          </div>
+          <h3 className="mt-4 text-lg font-medium">¡{savedCount} negocios guardados!</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ve a Negocios o Leads para verlos ordenados por scoring
+          </p>
+        </div>
+      )}
+
       {/* Empty State */}
-      {!searching && results.length === 0 && (
+      {!searching && !savingAll && results.length === 0 && savedCount === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Building2 className="h-12 w-12 text-muted-foreground/50" />
           <h3 className="mt-4 text-lg font-medium">Busca negocios</h3>
           <p className="mt-1 text-sm text-muted-foreground">
-            Selecciona una categoría y ciudad para empezar a buscar
+            Escribe un término de búsqueda o selecciona una ciudad para empezar
           </p>
         </div>
       )}

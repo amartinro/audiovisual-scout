@@ -19,11 +19,23 @@ export interface Business {
   provincia: string;
   fuente_datos: string;
   web: string | null;
+  telefono: string | null;
+  email: string | null;
   redes_sociales: RedesSociales | null;
   tamano_estimado: TamanoNegocio;
   presencia_digital_score: number;
   potencial_score: number;
   created_at: string;
+}
+
+export interface UserSettings {
+  id: string;
+  user_id: string;
+  email_prompt: string;
+  auto_save_leads: boolean;
+  default_ciudad: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Lead {

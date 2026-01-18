@@ -11,6 +11,7 @@ import BuscarNegocios from "./pages/BuscarNegocios";
 import Negocios from "./pages/Negocios";
 import Leads from "./pages/Leads";
 import Emails from "./pages/Emails";
+import Configuracion from "./pages/Configuracion";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
 
@@ -42,7 +43,8 @@ function AppRoutes() {
       <Route path="/buscar" element={<ProtectedRoute><BuscarNegocios /></ProtectedRoute>} />
       <Route path="/negocios" element={<ProtectedRoute><Negocios /></ProtectedRoute>} />
       <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
-      <Route path="/emails" element={<ProtectedRoute><Emails /></ProtectedRoute>} />
+<Route path="/emails" element={<ProtectedRoute><Emails /></ProtectedRoute>} />
+      <Route path="/configuracion" element={<ProtectedRoute><Configuracion /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
