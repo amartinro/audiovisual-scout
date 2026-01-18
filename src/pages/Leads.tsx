@@ -838,10 +838,12 @@ export default function Leads() {
                     </AlertDialogContent>
                   </AlertDialog>
 
-                  <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
-                    <Edit className="mr-2 h-4 w-4" />
-                    Editar
-                  </Button>
+                  <Link to={`/leads/${selectedLead.id}`}>
+                    <Button variant="outline">
+                      <Info className="mr-2 h-4 w-4" />
+                      Ver Detalles
+                    </Button>
+                  </Link>
                 </div>
 
                 <Link to={`/comunicaciones?lead=${selectedLead.id}`}>

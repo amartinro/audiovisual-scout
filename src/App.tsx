@@ -11,6 +11,7 @@ import Dashboard from "./pages/Dashboard";
 import BuscarLeads from "./pages/BuscarLeads";
 import Leads from "./pages/Leads";
 import Comunicaciones from "./pages/Comunicaciones";
+import LeadDetail from "./pages/LeadDetail";
 import Configuracion from "./pages/Configuracion";
 import NotFound from "./pages/NotFound";
 import { Loader2 } from "lucide-react";
@@ -42,6 +43,7 @@ function AppRoutes() {
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       <Route path="/buscar" element={<ProtectedRoute><BuscarLeads /></ProtectedRoute>} />
       <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
+      <Route path="/leads/:id" element={<ProtectedRoute><LeadDetail /></ProtectedRoute>} />
       <Route path="/comunicaciones" element={<ProtectedRoute><Comunicaciones /></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Configuracion /></ProtectedRoute>} />
       <Route path="*" element={<NotFound />} />
