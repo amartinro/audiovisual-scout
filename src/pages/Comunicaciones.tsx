@@ -21,8 +21,6 @@ import type { Lead, Business, UserSettings } from '@/lib/types';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ProgressDialog, ProgressStep } from '@/components/ui/progress-dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { PaginationControls } from '@/components/ui/pagination-controls';
-
 interface LeadWithBusiness extends Lead {
   business: Business;
 }
@@ -41,10 +39,7 @@ export default function Comunicaciones() {
   const [progressSteps, setProgressSteps] = useState<ProgressStep[]>([]);
   const [userSettings, setUserSettings] = useState<UserSettings | null>(null);
   const [contactMethod, setContactMethod] = useState<'email' | 'whatsapp'>('email');
-  
-  // Pagination for lead selector
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -103,13 +98,16 @@ export default function Comunicaciones() {
 
   const selectedLead = leads.find((l) => l.id === selectedLeadId);
 
-  // Paginated leads for selector
-  const paginatedLeads = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return leads.slice(startIndex, startIndex + pageSize);
-  }, [leads, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(leads.length / pageSize);
+  // Filter leads by search query
+  const filteredLeads = useMemo(() => {
+    if (!searchQuery) return leads;
+    const query = searchQuery.toLowerCase();
+    return leads.filter(lead => 
+      lead.business?.nombre?.toLowerCase().includes(query) ||
+      lead.business?.ciudad?.toLowerCase().includes(query) ||
+      lead.business?.categoria?.toLowerCase().includes(query)
+    );
+  }, [leads, searchQuery]);
 
   // Auto-select contact method based on available data
   useEffect(() => {
@@ -359,36 +357,31 @@ export default function Comunicaciones() {
             <CardDescription>Elige el lead para generar el mensaje ({leads.length} leads)</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Seleccionar lead..." />
-              </SelectTrigger>
-              <SelectContent>
-                {paginatedLeads.map((lead) => (
-                  <SelectItem key={lead.id} value={lead.id}>
-                    <span className="flex items-center gap-2">
-                      {lead.business?.nombre} - {lead.business?.ciudad}
-                      {!lead.business?.email && !lead.business?.telefono && (
-                        <AlertTriangle className="h-3 w-3 text-warning" />
-                      )}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Pagination for lead selector */}
-            {leads.length > pageSize && (
-              <PaginationControls
-                currentPage={currentPage}
-                totalPages={totalPages}
-                pageSize={pageSize}
-                totalItems={leads.length}
-                onPageChange={setCurrentPage}
-                onPageSizeChange={setPageSize}
-                pageSizeOptions={[10, 25, 50]}
+            <div className="space-y-2">
+              <Input
+                placeholder="Buscar lead..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="mb-2"
               />
-            )}
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar lead..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredLeads.map((lead) => (
+                    <SelectItem key={lead.id} value={lead.id}>
+                      <span className="flex items-center gap-2">
+                        {lead.business?.nombre} - {lead.business?.ciudad}
+                        {!lead.business?.email && !lead.business?.telefono && (
+                          <AlertTriangle className="h-3 w-3 text-warning" />
+                        )}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             {selectedLead && (
               <div className="rounded-lg border p-4 space-y-3">
