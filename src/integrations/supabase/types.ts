@@ -20,6 +20,7 @@ export type Database = {
           ciudad: string
           created_at: string
           direccion: string
+          email: string | null
           fuente_datos: string
           id: string
           nombre: string
@@ -28,6 +29,7 @@ export type Database = {
           provincia: string
           redes_sociales: Json | null
           tamano_estimado: Database["public"]["Enums"]["tamano_negocio"]
+          telefono: string | null
           web: string | null
         }
         Insert: {
@@ -35,6 +37,7 @@ export type Database = {
           ciudad: string
           created_at?: string
           direccion: string
+          email?: string | null
           fuente_datos?: string
           id?: string
           nombre: string
@@ -43,6 +46,7 @@ export type Database = {
           provincia?: string
           redes_sociales?: Json | null
           tamano_estimado?: Database["public"]["Enums"]["tamano_negocio"]
+          telefono?: string | null
           web?: string | null
         }
         Update: {
@@ -50,6 +54,7 @@ export type Database = {
           ciudad?: string
           created_at?: string
           direccion?: string
+          email?: string | null
           fuente_datos?: string
           id?: string
           nombre?: string
@@ -58,6 +63,7 @@ export type Database = {
           provincia?: string
           redes_sociales?: Json | null
           tamano_estimado?: Database["public"]["Enums"]["tamano_negocio"]
+          telefono?: string | null
           web?: string | null
         }
         Relationships: []
@@ -140,6 +146,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_settings: {
+        Row: {
+          auto_save_leads: boolean
+          created_at: string
+          default_ciudad: string
+          email_prompt: string
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_save_leads?: boolean
+          created_at?: string
+          default_ciudad?: string
+          email_prompt?: string
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_save_leads?: boolean
+          created_at?: string
+          default_ciudad?: string
+          email_prompt?: string
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {

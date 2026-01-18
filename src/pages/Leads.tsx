@@ -97,6 +97,9 @@ export default function Leads() {
         business: lead.business as Business
       })) as LeadWithBusiness[];
       
+      // Sort by business potencial_score descending
+      typedLeads.sort((a, b) => (b.business?.potencial_score || 0) - (a.business?.potencial_score || 0));
+      
       setLeads(typedLeads);
     } catch (error) {
       console.error('Error fetching leads:', error);
@@ -351,9 +354,9 @@ export default function Leads() {
         </Button>
       </div>
 
-      {/* Results count */}
+{/* Results count */}
       <p className="text-sm text-muted-foreground">
-        {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''}
+        {filteredLeads.length} lead{filteredLeads.length !== 1 ? 's' : ''} (ordenados por score)
       </p>
 
       {/* Leads List */}
