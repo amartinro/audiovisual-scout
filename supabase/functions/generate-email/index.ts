@@ -23,8 +23,8 @@ serve(async (req) => {
       throw new Error("LOVABLE_API_KEY not configured");
     }
 
-    const tono = business.tamano_estimado === 'grande' ? 'formal y corporativo' : 
-                 business.tamano_estimado === 'pequeno' ? 'cercano y personal' : 'profesional pero accesible';
+    // Tono siempre cercano y natural por defecto
+    const tono = 'cercano, natural y amigable';
 
     // Detectar carencias digitales
     const carencias: string[] = [];

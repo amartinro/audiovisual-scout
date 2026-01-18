@@ -59,7 +59,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ViewToggle, type ViewMode } from '@/components/ui/view-toggle';
 import { LeadCard } from '@/components/leads/LeadCard';
 import { LeadListItem } from '@/components/leads/LeadListItem';
@@ -74,6 +74,7 @@ const ESTADOS: EstadoLead[] = ['nuevo', 'contactado', 'respondido', 'descartado'
 export default function Leads() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [leads, setLeads] = useState<LeadWithBusiness[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<LeadWithBusiness[]>([]);
@@ -101,6 +102,18 @@ export default function Leads() {
       fetchLeads();
     }
   }, [user]);
+
+  // Handle selected lead from URL params
+  useEffect(() => {
+    const selectedId = searchParams.get('selected');
+    if (selectedId && leads.length > 0) {
+      const lead = leads.find(l => l.id === selectedId);
+      if (lead) {
+        setSelectedLead(lead);
+        setNotasTemp(lead.notas || '');
+      }
+    }
+  }, [searchParams, leads]);
 
   useEffect(() => {
     filterLeads();

@@ -111,17 +111,105 @@ export default function Emails() {
     }
   };
 
+  const analizarYGuardarMensaje = async () => {
+    if (!selectedLead) return;
+
+    const business = selectedLead.business;
+    
+    setGenerating(true);
+    setProgressOpen(true);
+
+    const initialSteps: ProgressStep[] = [
+      { id: 'analyze', label: 'Analizando negocio...', status: 'pending', detail: 'Recopilando información del negocio' },
+      { id: 'save-notes', label: 'Guardando análisis', status: 'pending', detail: 'Almacenando notas en la base de datos' },
+      { id: 'generate', label: 'Generando mensaje de contacto', status: 'pending', detail: 'Redactando mensaje con IA' },
+    ];
+
+    setProgressSteps(initialSteps);
+
+    try {
+      // Step 1: Analyze
+      updateStep('analyze', { status: 'loading', detail: `Analizando ${business.nombre}...` });
+      
+      const analysis = await analizarNegocio(business);
+      
+      if (!analysis) {
+        updateStep('analyze', { status: 'error', detail: 'No se pudo analizar' });
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'No se pudo analizar el negocio.',
+        });
+        return;
+      }
+
+      updateStep('analyze', { status: 'complete', detail: 'Análisis completado' });
+
+      // Step 2: Save notes
+      updateStep('save-notes', { status: 'loading', detail: 'Guardando en base de datos...' });
+      
+      const { error: updateError } = await supabase
+        .from('leads')
+        .update({ notas: analysis })
+        .eq('id', selectedLead.id);
+
+      if (updateError) {
+        updateStep('save-notes', { status: 'error', detail: 'Error al guardar' });
+        throw updateError;
+      }
+
+      updateStep('save-notes', { status: 'complete', detail: 'Notas guardadas' });
+
+      // Update local state
+      setLeads(prev => prev.map(l => 
+        l.id === selectedLead.id ? { ...l, notas: analysis } : l
+      ));
+
+      // Step 3: Generate message
+      updateStep('generate', { status: 'loading', detail: 'Redactando mensaje personalizado...' });
+      
+      const emailData = await generarEmailConIA(business, analysis);
+
+      if (emailData) {
+        updateStep('generate', { status: 'complete', detail: 'Mensaje generado' });
+        setAsunto(emailData.asunto);
+        setCuerpo(emailData.cuerpo);
+        
+        toast({ title: '¡Mensaje generado con éxito!' });
+      } else {
+        updateStep('generate', { status: 'error', detail: 'Error al generar mensaje' });
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'No se pudo generar el mensaje. Inténtalo de nuevo.',
+        });
+      }
+    } catch (error) {
+      console.error('Error in message generation:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Ocurrió un error durante el proceso.',
+      });
+    } finally {
+      setTimeout(() => {
+        setProgressOpen(false);
+        setGenerating(false);
+      }, 1000);
+    }
+  };
+
   const generarEmail = async () => {
     if (!selectedLead) return;
 
     const business = selectedLead.business;
 
-    // Check if business has email
+    // Check if business has email for sending
     if (!business.email) {
       toast({
         variant: 'destructive',
         title: 'Email requerido',
-        description: 'Este negocio no tiene email asociado. No se puede generar ni enviar un email.',
+        description: 'Este negocio no tiene email asociado. Usa "Generar Mensaje" para crear un mensaje de contacto alternativo.',
       });
       return;
     }
@@ -342,12 +430,12 @@ export default function Emails() {
                   )}
                 </div>
 
-                {/* Email required warning */}
+                {/* Email warning - now allows message generation */}
                 {!selectedLead.business?.email && (
-                  <Alert variant="destructive" className="mt-2">
+                  <Alert className="mt-2">
                     <AlertTriangle className="h-4 w-4" />
                     <AlertDescription>
-                      Este negocio no tiene email. No se puede generar ni enviar emails.
+                      Sin email asociado. Puedes generar un mensaje de contacto para usar en redes sociales o teléfono.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -368,18 +456,37 @@ export default function Emails() {
               </div>
             )}
 
-            <Button
-              className="w-full"
-              onClick={generarEmail}
-              disabled={!selectedLead || generating || !selectedLead?.business?.email}
-            >
-              {generating ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <div className="flex flex-col gap-2">
+              {/* Button for email generation - only if has email */}
+              {selectedLead?.business?.email ? (
+                <Button
+                  className="w-full"
+                  onClick={generarEmail}
+                  disabled={!selectedLead || generating}
+                >
+                  {generating ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  {selectedLead?.notas ? 'Generar Nuevo Email' : 'Analizar y Generar Email'}
+                </Button>
               ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
+                <Button
+                  className="w-full"
+                  variant="secondary"
+                  onClick={analizarYGuardarMensaje}
+                  disabled={!selectedLead || generating}
+                >
+                  {generating ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  Generar Mensaje de Contacto
+                </Button>
               )}
-              {selectedLead?.notas ? 'Generar Nuevo Email' : 'Analizar y Generar Email'}
-            </Button>
+            </div>
           </CardContent>
         </Card>
 

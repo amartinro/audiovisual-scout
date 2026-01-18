@@ -165,7 +165,7 @@ export default function Dashboard() {
                   <div
                     key={lead.id}
                     className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={() => navigate('/leads')}
+                    onClick={() => navigate(`/leads?selected=${lead.id}`)}
                   >
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">{lead.business?.nombre}</p>

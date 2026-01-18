@@ -174,21 +174,25 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Extract social media
+      // Extract social media - only save valid URLs
       const socialPatterns = {
-        instagram: /(?:instagram\.com\/|@)([a-zA-Z0-9._]+)/i,
-        facebook: /facebook\.com\/([a-zA-Z0-9.]+)/i,
-        twitter: /(?:twitter\.com\/|x\.com\/)([a-zA-Z0-9_]+)/i,
-        linkedin: /linkedin\.com\/(?:company\/|in\/)([a-zA-Z0-9-]+)/i,
-        youtube: /youtube\.com\/(?:c\/|channel\/|@)([a-zA-Z0-9_-]+)/i,
-        tiktok: /tiktok\.com\/@([a-zA-Z0-9._]+)/i,
+        instagram: /https?:\/\/(?:www\.)?instagram\.com\/([a-zA-Z0-9._]+)\/?/i,
+        facebook: /https?:\/\/(?:www\.)?facebook\.com\/([a-zA-Z0-9.]+)\/?/i,
+        twitter: /https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/([a-zA-Z0-9_]+)\/?/i,
+        linkedin: /https?:\/\/(?:www\.)?linkedin\.com\/(?:company\/|in\/)([a-zA-Z0-9-]+)\/?/i,
+        youtube: /https?:\/\/(?:www\.)?youtube\.com\/(?:c\/|channel\/|@)([a-zA-Z0-9_-]+)\/?/i,
+        tiktok: /https?:\/\/(?:www\.)?tiktok\.com\/@([a-zA-Z0-9._]+)\/?/i,
       };
 
       for (const [network, pattern] of Object.entries(socialPatterns)) {
         if (!enrichedContact.redesSociales![network as keyof typeof enrichedContact.redesSociales]) {
           const match = content.match(pattern);
-          if (match) {
-            enrichedContact.redesSociales![network as keyof typeof enrichedContact.redesSociales] = match[0];
+          if (match && match[0]) {
+            // Validate it's a proper URL
+            const url = match[0];
+            if (url.startsWith('http://') || url.startsWith('https://')) {
+              enrichedContact.redesSociales![network as keyof typeof enrichedContact.redesSociales] = url;
+            }
           }
         }
       }
