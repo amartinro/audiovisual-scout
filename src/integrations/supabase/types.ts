@@ -114,6 +114,7 @@ export type Database = {
           business_id: string
           created_at: string
           estado: Database["public"]["Enums"]["estado_lead"]
+          estado_enriquecimiento: string
           etiquetas: string[] | null
           id: string
           notas: string | null
@@ -124,6 +125,7 @@ export type Database = {
           business_id: string
           created_at?: string
           estado?: Database["public"]["Enums"]["estado_lead"]
+          estado_enriquecimiento?: string
           etiquetas?: string[] | null
           id?: string
           notas?: string | null
@@ -134,6 +136,7 @@ export type Database = {
           business_id?: string
           created_at?: string
           estado?: Database["public"]["Enums"]["estado_lead"]
+          estado_enriquecimiento?: string
           etiquetas?: string[] | null
           id?: string
           notas?: string | null

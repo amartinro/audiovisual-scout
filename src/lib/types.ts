@@ -1,5 +1,6 @@
 export type TamanoNegocio = 'pequeno' | 'mediano' | 'grande';
 export type EstadoLead = 'nuevo' | 'contactado' | 'respondido' | 'descartado';
+export type EstadoEnriquecimiento = 'guardado' | 'enriquecido' | 'error';
 export type EstadoEmail = 'borrador' | 'enviado';
 
 export type RedesSociales = {
@@ -43,6 +44,7 @@ export interface Lead {
   id: string;
   business_id: string;
   estado: EstadoLead;
+  estado_enriquecimiento: EstadoEnriquecimiento;
   etiquetas: string[];
   notas: string | null;
   ultimo_contacto: string | null;

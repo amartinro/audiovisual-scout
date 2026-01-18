@@ -9,7 +9,6 @@ import {
   Globe,
   Phone,
   Mail,
-  MapPin,
   Instagram,
   Facebook,
   Twitter,
@@ -19,8 +18,10 @@ import {
   Trash2,
   ExternalLink,
   Building2,
-  Calendar,
   TrendingUp,
+  RefreshCw,
+  CheckCircle,
+  AlertCircle,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -29,10 +30,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ScoreBadge } from '@/components/ui/score-badge';
-import { EstadoBadge } from '@/components/ui/estado-badge';
 import { GoogleMapsPopup } from '@/components/ui/google-maps-popup';
 import {
   Select,
@@ -54,6 +53,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { useToast } from '@/hooks/use-toast';
 import type { Business, Lead, EstadoLead, RedesSociales } from '@/lib/types';
+import { enrichContact, type ContactInfo } from '@/lib/api/firecrawl';
 
 interface LeadWithBusiness extends Lead {
   business: Business;
@@ -69,6 +69,7 @@ export default function LeadDetail() {
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [enriching, setEnriching] = useState(false);
   const [editing, setEditing] = useState(false);
   const [lead, setLead] = useState<LeadWithBusiness | null>(null);
   
@@ -313,6 +314,114 @@ export default function LeadDetail() {
         title: 'Error',
         description: 'No se pudo eliminar el lead',
       });
+    }
+  };
+
+  const enriquecerLead = async () => {
+    if (!lead) return;
+
+    setEnriching(true);
+    try {
+      const existingContact: ContactInfo = {
+        web: lead.business.web,
+        telefono: lead.business.telefono,
+        email: lead.business.email,
+        redesSociales: {
+          instagram: lead.business.redes_sociales?.instagram || null,
+          facebook: lead.business.redes_sociales?.facebook || null,
+          twitter: lead.business.redes_sociales?.twitter || null,
+          linkedin: lead.business.redes_sociales?.linkedin || null,
+          youtube: lead.business.redes_sociales?.youtube || null,
+          tiktok: null,
+        },
+      };
+
+      const result = await enrichContact(lead.business.nombre, lead.business.ciudad, existingContact);
+
+      if (result.success && result.contact) {
+        const enrichedContact = result.contact;
+        const redes_sociales: RedesSociales = {};
+        if (enrichedContact.redesSociales?.instagram) redes_sociales.instagram = enrichedContact.redesSociales.instagram;
+        if (enrichedContact.redesSociales?.facebook) redes_sociales.facebook = enrichedContact.redesSociales.facebook;
+        if (enrichedContact.redesSociales?.twitter) redes_sociales.twitter = enrichedContact.redesSociales.twitter;
+        if (enrichedContact.redesSociales?.linkedin) redes_sociales.linkedin = enrichedContact.redesSociales.linkedin;
+        if (enrichedContact.redesSociales?.youtube) redes_sociales.youtube = enrichedContact.redesSociales.youtube;
+
+        // Update business
+        const { error: businessError } = await supabase
+          .from('businesses')
+          .update({
+            web: enrichedContact.web || lead.business.web,
+            telefono: enrichedContact.telefono || lead.business.telefono,
+            email: enrichedContact.email || lead.business.email,
+            redes_sociales: Object.keys(redes_sociales).length > 0 ? redes_sociales : lead.business.redes_sociales,
+          })
+          .eq('id', lead.business.id);
+
+        if (businessError) throw businessError;
+
+        // Update lead enrichment status
+        const { error: leadError } = await supabase
+          .from('leads')
+          .update({ estado_enriquecimiento: 'enriquecido' })
+          .eq('id', lead.id);
+
+        if (leadError) throw leadError;
+
+        // Update local state
+        const updatedBusiness = {
+          ...lead.business,
+          web: enrichedContact.web || lead.business.web,
+          telefono: enrichedContact.telefono || lead.business.telefono,
+          email: enrichedContact.email || lead.business.email,
+          redes_sociales: Object.keys(redes_sociales).length > 0 ? redes_sociales : lead.business.redes_sociales,
+        };
+
+        setLead({
+          ...lead,
+          estado_enriquecimiento: 'enriquecido',
+          business: updatedBusiness,
+        });
+        initializeFields({ ...lead, estado_enriquecimiento: 'enriquecido', business: updatedBusiness });
+
+        toast({
+          title: 'Lead enriquecido',
+          description: `Se encontraron ${result.contactCount || 0} datos de contacto`,
+        });
+      } else {
+        // No data found but no error
+        const { error: leadError } = await supabase
+          .from('leads')
+          .update({ estado_enriquecimiento: 'enriquecido' })
+          .eq('id', lead.id);
+
+        if (leadError) throw leadError;
+
+        setLead({ ...lead, estado_enriquecimiento: 'enriquecido' });
+
+        toast({
+          title: 'Enriquecimiento completado',
+          description: 'No se encontraron nuevos datos de contacto',
+        });
+      }
+    } catch (error) {
+      console.error('Error enriching lead:', error);
+      
+      // Mark as error
+      await supabase
+        .from('leads')
+        .update({ estado_enriquecimiento: 'error' })
+        .eq('id', lead.id);
+
+      setLead({ ...lead, estado_enriquecimiento: 'error' });
+
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'No se pudo enriquecer el lead. Puedes reintentar.',
+      });
+    } finally {
+      setEnriching(false);
     }
   };
 
@@ -671,6 +780,58 @@ export default function LeadDetail() {
                   <span>{formatDate(lead.ultimo_contacto)}</span>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Enrichment Status Card */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5" />
+                Enriquecimiento
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Estado</span>
+                <Badge 
+                  variant={
+                    lead.estado_enriquecimiento === 'enriquecido' ? 'default' :
+                    lead.estado_enriquecimiento === 'error' ? 'destructive' :
+                    'secondary'
+                  }
+                  className="flex items-center gap-1"
+                >
+                  {lead.estado_enriquecimiento === 'enriquecido' ? (
+                    <><CheckCircle className="h-3 w-3" /> Enriquecido</>
+                  ) : lead.estado_enriquecimiento === 'error' ? (
+                    <><AlertCircle className="h-3 w-3" /> Error</>
+                  ) : (
+                    <>Guardado</>
+                  )}
+                </Badge>
+              </div>
+              
+              {lead.estado_enriquecimiento !== 'enriquecido' && (
+                <Button 
+                  onClick={enriquecerLead} 
+                  disabled={enriching}
+                  className="w-full"
+                  variant={lead.estado_enriquecimiento === 'error' ? 'destructive' : 'default'}
+                >
+                  {enriching ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enriqueciendo...</>
+                  ) : lead.estado_enriquecimiento === 'error' ? (
+                    <><RefreshCw className="mr-2 h-4 w-4" /> Reintentar</>
+                  ) : (
+                    <><RefreshCw className="mr-2 h-4 w-4" /> Enriquecer Lead</>
+                  )}
+                </Button>
+              )}
+              
+              <p className="text-xs text-muted-foreground">
+                El enriquecimiento busca datos de contacto adicionales (web, email, teléfono, redes sociales).
+              </p>
             </CardContent>
           </Card>
 

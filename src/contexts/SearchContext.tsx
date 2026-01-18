@@ -304,11 +304,13 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
           .maybeSingle();
 
         if (!existingLead) {
-          // Create lead
+          // Create lead with enrichment status
+          const estadoEnriquecimiento = enriched > 0 ? 'enriquecido' : 'guardado';
           await supabase.from('leads').insert({
             business_id: businessId,
             user_id: userId,
             estado: 'nuevo',
+            estado_enriquecimiento: estadoEnriquecimiento,
             etiquetas: [],
           });
         }
