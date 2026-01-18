@@ -468,7 +468,8 @@ export default function BuscarNegocios() {
               redes_sociales: contactInfo.redesSociales,
               tamano_estimado: tamanoEstimado,
               presencia_digital_score: presenciaScore,
-              potencial_score: potencialScore,
+              potencial_score: scoringResult.score,
+              motivo_scoring: scoringResult.motivo,
             })
             .select('id')
             .single();
