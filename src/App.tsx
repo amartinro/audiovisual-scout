@@ -4,10 +4,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { SearchProvider } from "@/contexts/SearchContext";
 import { AppLayout } from "@/components/layout/AppLayout";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
-import BuscarNegocios from "./pages/BuscarNegocios";
+import BuscarLeads from "./pages/BuscarLeads";
 import Leads from "./pages/Leads";
 import Emails from "./pages/Emails";
 import Configuracion from "./pages/Configuracion";
@@ -39,7 +40,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/auth" element={<Auth />} />
       <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-      <Route path="/buscar" element={<ProtectedRoute><BuscarNegocios /></ProtectedRoute>} />
+      <Route path="/buscar" element={<ProtectedRoute><BuscarLeads /></ProtectedRoute>} />
       <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
       <Route path="/emails" element={<ProtectedRoute><Emails /></ProtectedRoute>} />
       <Route path="/configuracion" element={<ProtectedRoute><Configuracion /></ProtectedRoute>} />
@@ -55,7 +56,9 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <SearchProvider>
+            <AppRoutes />
+          </SearchProvider>
         </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
