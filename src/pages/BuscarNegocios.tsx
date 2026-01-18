@@ -47,7 +47,7 @@ interface OSMResult {
 }
 
 const CATEGORIAS = [
-  { value: '', label: 'Todas las categorías' },
+  { value: 'all', label: 'Todas las categorías' },
   { value: 'restaurant', label: 'Restaurante' },
   { value: 'hotel', label: 'Hotel' },
   { value: 'bar', label: 'Bar' },
@@ -82,7 +82,7 @@ export default function BuscarNegocios() {
   const [savingAll, setSavingAll] = useState(false);
   const [results, setResults] = useState<OSMResult[]>([]);
   const [savedCount, setSavedCount] = useState(0);
-  const [categoria, setCategoria] = useState('');
+  const [categoria, setCategoria] = useState('all');
   const [ciudad, setCiudad] = useState('Salamanca');
   const [query, setQuery] = useState('');
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -117,7 +117,8 @@ export default function BuscarNegocios() {
 
     try {
       // Build search query - category is now optional
-      const searchTerms = [query, categoria, ciudad, 'Salamanca', 'España'].filter(Boolean);
+      const categorySearch = categoria !== 'all' ? categoria : '';
+      const searchTerms = [query, categorySearch, ciudad, 'Salamanca', 'España'].filter(Boolean);
       const searchQuery = searchTerms.join(' ');
       
       const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
@@ -212,7 +213,7 @@ export default function BuscarNegocios() {
 
       // Estimate size based on type
       const tamanoEstimado: TamanoNegocio = result.type === 'hotel' ? 'grande' : 'pequeno';
-      const categoriaFinal = categoria || result.type || 'Comercio';
+      const categoriaFinal = (categoria !== 'all' ? categoria : '') || result.type || 'Comercio';
 
       const presenciaScore = calcularPresenciaDigitalScore(tieneWeb, false, !tieneRedes);
       const potencialScore = calcularPotencialScore({
@@ -412,7 +413,7 @@ export default function BuscarNegocios() {
                 tieneWeb,
                 webPobre: false,
                 redesSocialesAbandonadas: true,
-                tipoNegocio: categoria || result.type,
+                tipoNegocio: categoria !== 'all' ? categoria : result.type,
               });
 
               return (
