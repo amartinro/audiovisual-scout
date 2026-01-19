@@ -31,6 +31,7 @@ export type Database = {
           redes_sociales: Json | null
           tamano_estimado: Database["public"]["Enums"]["tamano_negocio"]
           telefono: string | null
+          user_id: string
           web: string | null
         }
         Insert: {
@@ -49,6 +50,7 @@ export type Database = {
           redes_sociales?: Json | null
           tamano_estimado?: Database["public"]["Enums"]["tamano_negocio"]
           telefono?: string | null
+          user_id: string
           web?: string | null
         }
         Update: {
@@ -67,6 +69,7 @@ export type Database = {
           redes_sociales?: Json | null
           tamano_estimado?: Database["public"]["Enums"]["tamano_negocio"]
           telefono?: string | null
+          user_id?: string
           web?: string | null
         }
         Relationships: []

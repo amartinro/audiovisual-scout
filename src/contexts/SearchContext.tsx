@@ -264,7 +264,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
           duplicates++;
           updateState({ duplicatesCount: duplicates });
         } else {
-          // Insert business with enriched contact info
+          // Insert business with enriched contact info and user ownership
           const { data: newBusiness, error: businessError } = await supabase
             .from('businesses')
             .insert({
@@ -282,6 +282,7 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
               presencia_digital_score: presenciaScore,
               potencial_score: scoringResult.score,
               motivo_scoring: scoringResult.motivo,
+              user_id: userId,
             })
             .select('id')
             .single();

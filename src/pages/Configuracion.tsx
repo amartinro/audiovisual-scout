@@ -168,10 +168,25 @@ export default function Configuracion() {
         return;
       }
 
-      // Delete all data in order (respecting foreign keys)
-      await supabase.from('emails').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      // Delete all user's data in order (respecting foreign keys)
+      // First get all leads for this user to delete their emails
+      const { data: userLeads } = await supabase
+        .from('leads')
+        .select('id')
+        .eq('user_id', user.id);
+      
+      if (userLeads && userLeads.length > 0) {
+        const leadIds = userLeads.map(l => l.id);
+        await supabase.from('emails').delete().in('lead_id', leadIds);
+      }
+      
+      // Delete leads (user-scoped by RLS)
       await supabase.from('leads').delete().eq('user_id', user.id);
-      await supabase.from('businesses').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      
+      // Delete businesses (user-scoped by RLS with new user_id column)
+      await supabase.from('businesses').delete().eq('user_id', user.id);
+      
+      // Delete user settings
       await supabase.from('user_settings').delete().eq('user_id', user.id);
 
       toast({ 
