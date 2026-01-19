@@ -396,6 +396,13 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
         return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       };
       
+      // Validate input contains only safe characters for Overpass QL
+      const validateOverpassInput = (input: string): boolean => {
+        // Allow alphanumeric, spaces, hyphens, apostrophes, and common Spanish/accented characters
+        const safePattern = /^[a-zA-Z0-9\s\-'ñÑáéíóúüÁÉÍÓÚÜ]+$/i;
+        return safePattern.test(input);
+      };
+      
       if (params.query.trim()) {
         // Validate and sanitize the query
         const sanitizedQuery = params.query.trim();
@@ -403,6 +410,16 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
           updateState({ 
             isSearching: false, 
             error: 'La búsqueda es demasiado larga (máximo 100 caracteres)' 
+          });
+          isRunningRef.current = false;
+          return;
+        }
+        
+        // Validate characters for Overpass QL safety
+        if (!validateOverpassInput(sanitizedQuery)) {
+          updateState({ 
+            isSearching: false, 
+            error: 'La búsqueda contiene caracteres no permitidos' 
           });
           isRunningRef.current = false;
           return;
