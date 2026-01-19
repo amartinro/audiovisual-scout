@@ -391,12 +391,31 @@ export function SearchProvider({ children }: { children: React.ReactNode }) {
       
       let overpassQuery: string;
       
+      // Escape regex special characters to prevent injection attacks
+      const escapeRegex = (str: string): string => {
+        return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      };
+      
       if (params.query.trim()) {
+        // Validate and sanitize the query
+        const sanitizedQuery = params.query.trim();
+        if (sanitizedQuery.length > 100) {
+          updateState({ 
+            isSearching: false, 
+            error: 'La búsqueda es demasiado larga (máximo 100 caracteres)' 
+          });
+          isRunningRef.current = false;
+          return;
+        }
+        
+        // Escape special regex characters before interpolation
+        const escapedQuery = escapeRegex(sanitizedQuery);
+        
         overpassQuery = `
           [out:json][timeout:30];
           (
-            node["name"~"${params.query}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
-            way["name"~"${params.query}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
+            node["name"~"${escapedQuery}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
+            way["name"~"${escapedQuery}",i]${categoryFilter !== '["name"]["amenity"]' ? categoryFilter : ''}(${bboxStr});
           );
           out center tags;
         `;
